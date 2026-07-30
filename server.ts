@@ -52,10 +52,9 @@ app.post('/api/upload-r2', upload.single('file'), async (req, res) => {
     const r2Client = getR2Client();
 
     if (!r2Client || !bucketName || !publicUrl) {
-      console.warn('Variáveis do Cloudflare R2 não estão completamente configuradas. Usando modo de fallback (Data URL).');
-      const base64 = file.buffer.toString('base64');
-      const dataUrl = `data:${file.mimetype};base64,${base64}`;
-      return res.json({ url: dataUrl, key: 'fallback-base64' });
+      return res.status(400).json({
+        error: 'Variáveis de ambiente do Cloudflare R2 não estão configuradas. Verifique CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME e R2_PUBLIC_URL.',
+      });
     }
 
     const cleanFilename = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -77,12 +76,7 @@ app.post('/api/upload-r2', upload.single('file'), async (req, res) => {
     return res.json({ url: fileUrl, key });
   } catch (error: any) {
     console.error('Erro no upload para o Cloudflare R2:', error);
-    if (req.file) {
-      const base64 = req.file.buffer.toString('base64');
-      const dataUrl = `data:${req.file.mimetype};base64,${base64}`;
-      return res.json({ url: dataUrl, key: 'fallback-base64', warning: error.message });
-    }
-    return res.status(500).json({ error: error.message || 'Erro ao fazer upload da imagem.' });
+    return res.status(500).json({ error: error.message || 'Erro ao fazer upload da imagem para o R2.' });
   }
 });
 

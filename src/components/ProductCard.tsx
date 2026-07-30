@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product } from '../types';
 import { FileCheck, Printer, ArrowRight, Sparkles } from 'lucide-react';
 import { generateSlug } from '../utils/slug';
@@ -11,9 +11,15 @@ interface ProductCardProps {
 
 export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelectProduct }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const imageSrc = (product.thumbnailUrl && product.thumbnailUrl.trim() !== '') 
     ? product.thumbnailUrl 
     : ((product.mainImage && product.mainImage.trim() !== '') ? product.mainImage : null);
+
+  useEffect(() => {
+    setImageLoaded(false);
+    setHasError(false);
+  }, [imageSrc]);
 
   const handleClick = (e?: React.MouseEvent) => {
     if (e) {
@@ -34,16 +40,17 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelectProdu
     >
       {/* Product Image Container */}
       <div className="relative aspect-4/3 w-full bg-slate-200 overflow-hidden">
-        {!imageLoaded && imageSrc && (
+        {!imageLoaded && !hasError && imageSrc && (
           <div className="absolute inset-0 bg-slate-200 animate-pulse flex items-center justify-center">
             <span className="text-slate-400 text-xs font-medium">Carregando imagem...</span>
           </div>
         )}
-        {imageSrc ? (
+        {imageSrc && !hasError ? (
           <img
             src={imageSrc}
             alt={product.title}
             onLoad={() => setImageLoaded(true)}
+            onError={() => setHasError(true)}
             className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-500 ${
               imageLoaded ? 'opacity-100' : 'opacity-0'
             }`}

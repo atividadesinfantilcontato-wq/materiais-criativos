@@ -38,14 +38,14 @@ export function docToProduct(id: string, data: any): Product {
   };
 }
 
-// Helper to ensure image URLs stay within Firestore document size limits (< 1MB)
+// Helper to ensure image URLs saved to Firestore are strictly valid public https:// URLs (e.g. Cloudflare R2)
 function sanitizeFirestoreUrl(url?: string): string {
   if (!url) return '';
-  // If image is a large inline base64 string, keep empty string to prevent Firestore document size limit issues
-  if (url.startsWith('data:') && url.length > 2000) {
-    return '';
+  const trimmed = url.trim();
+  if (trimmed.startsWith('https://')) {
+    return trimmed;
   }
-  return url;
+  return '';
 }
 
 // Helper to convert Product to Firestore doc payload

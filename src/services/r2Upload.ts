@@ -1,38 +1,25 @@
-// Client-side helper to upload image to Cloudflare R2 via server endpoint (with Data URL fallback)
+// Client-side helper to upload image to Cloudflare R2 via server endpoint
 export async function uploadToR2(file: File, folder: string = 'materials'): Promise<string> {
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('folder', folder);
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('folder', folder);
 
-    const response = await fetch('/api/upload-r2', {
-      method: 'POST',
-      body: formData,
-    });
+  const response = await fetch('/api/upload-r2', {
+    method: 'POST',
+    body: formData,
+  });
 
-    const data = await response.json().catch(() => ({}));
+  const data = await response.json().catch(() => ({}));
 
-    if (response.ok && data.url) {
-      return data.url;
+  if (response.ok && data.url) {
+    if (data.url.startsWith('data:image') || data.url.startsWith('blob:')) {
+      throw new Error('O servidor R2 retornou um formato de dados inválido (base64/data URL). Configure as chaves de acesso do Cloudflare R2.');
     }
-    if (data.error && !data.url) {
-      console.warn('Servidor R2 retornou aviso:', data.error);
-    }
-  } catch (err) {
-    console.warn('Falha no envio para R2 server endpoint, usando fallback local:', err);
+    return data.url;
   }
 
-  // Fallback: read as Data URL locally so upload never fails for the user
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result);
-      } else {
-        reject(new Error('Erro ao ler o arquivo de imagem.'));
-      }
-    };
-    reader.onerror = () => reject(new Error('Falha na leitura do arquivo.'));
-    reader.readAsDataURL(file);
-  });
+  const errorMessage = data.error || data.warning || 'Erro desconhecido ao enviar imagem para o Cloudflare R2.';
+  console.error('Erro no upload R2:', errorMessage);
+  throw new Error(errorMessage);
 }
+

@@ -25,14 +25,21 @@ interface ProductDetailPageProps {
 }
 
 export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, onNavigate }) => {
-  const [selectedImage, setSelectedImage] = useState<string>(product.mainImage);
+  const [selectedImage, setSelectedImage] = useState<string>(product.mainImage || product.thumbnailUrl || '');
+  const [imageError, setImageError] = useState<boolean>(false);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (product) {
+      setSelectedImage(product.mainImage || product.thumbnailUrl || '');
+      setImageError(false);
       trackProductView(product);
     }
-  }, [product?.id, product?.slug]);
+  }, [product?.id, product?.mainImage, product?.thumbnailUrl]);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [selectedImage]);
 
   const youtubeEmbedId = extractYoutubeEmbedId(product.youtubeUrl);
 
@@ -91,10 +98,11 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
             {/* Main Image View */}
             <div className="lg:col-span-6 space-y-4">
               <div className="aspect-4/3 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shadow-inner relative flex items-center justify-center text-slate-400">
-                {(selectedImage || product.mainImage) ? (
+                {(selectedImage || product.mainImage) && !imageError ? (
                   <img
                     src={selectedImage || product.mainImage}
                     alt={product.title}
+                    onError={() => setImageError(true)}
                     className="w-full h-full object-cover"
                   />
                 ) : (

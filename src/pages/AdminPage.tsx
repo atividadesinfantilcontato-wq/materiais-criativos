@@ -41,8 +41,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
   const [loginLoading, setLoginLoading] = useState<boolean>(false);
   const [resetSent, setResetSent] = useState<boolean>(false);
 
-  // Navigation tab inside Admin: 'inicio' | 'materiais' | 'estatisticas' | 'divulgacao' | 'configuracoes'
-  const [activeTab, setActiveTab] = useState<'inicio' | 'materiais' | 'estatisticas' | 'divulgacao' | 'configuracoes'>('materiais');
+  // Navigation tab inside Admin: 'inicio' | 'materiais' | 'estatisticas' | 'divulgacao' | 'configuracoes' | 'diagnostico'
+  const [activeTab, setActiveTab] = useState<'inicio' | 'materiais' | 'estatisticas' | 'divulgacao' | 'configuracoes' | 'diagnostico'>('materiais');
+
+  // Image upload diagnostics tracking state
+  const [lastR2UploadUrl, setLastR2UploadUrl] = useState<string>('');
+  const [lastR2UploadStatus, setLastR2UploadStatus] = useState<string>('Nenhum upload nesta sessão');
+  const [lastR2UploadError, setLastR2UploadError] = useState<string | null>(null);
 
   // Analytics & Link Generator state
   const [analyticsEvents, setAnalyticsEvents] = useState<AnalyticsEventRecord[]>([]);
@@ -296,9 +301,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
     try {
       const url = await uploadToR2(file, 'capas');
       setEditingProduct(prev => prev ? { ...prev, mainImage: url, thumbnailUrl: url } : null);
-      showToast('Imagem carregada com sucesso!');
+      setLastR2UploadUrl(url);
+      setLastR2UploadStatus('Sucesso');
+      setLastR2UploadError(null);
+      showToast('Imagem principal enviada para o Cloudflare R2 com sucesso!');
     } catch (err: any) {
-      showToast('Erro ao fazer upload da imagem: ' + (err.message || 'Falha no envio'));
+      const msg = err.message || 'Falha no envio para o R2';
+      setLastR2UploadStatus('Erro');
+      setLastR2UploadError(msg);
+      showToast('Erro ao fazer upload da imagem: ' + msg);
     } finally {
       setUploadingMain(false);
       if (e.target) {
@@ -338,9 +349,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
           galleryImages: [...existing, ...uploadedUrls]
         };
       });
+
+      if (uploadedUrls.length > 0) {
+        setLastR2UploadUrl(uploadedUrls[uploadedUrls.length - 1]);
+        setLastR2UploadStatus('Sucesso');
+        setLastR2UploadError(null);
+      }
+
       showToast(`${uploadedUrls.length} foto(s) adicionada(s) à galeria com sucesso!`);
     } catch (err: any) {
-      showToast('Erro no upload de galeria: ' + (err.message || 'Falha ao enviar'));
+      const msg = err.message || 'Falha ao enviar galeria';
+      setLastR2UploadStatus('Erro');
+      setLastR2UploadError(msg);
+      showToast('Erro no upload de galeria: ' + msg);
     } finally {
       setUploadingGallery(false);
       if (e.target) {
@@ -357,12 +378,28 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
       return;
     }
 
+    const isValidHttpsUrl = (u?: string) => {
+      if (!u || u.trim() === '') return true; // empty allowed
+      const trimmed = u.trim();
+      return trimmed.startsWith('https://') && !trimmed.startsWith('data:') && !trimmed.startsWith('blob:') && !trimmed.startsWith('file:');
+    };
+
+    if (!isValidHttpsUrl(editingProduct.mainImage) || !isValidHttpsUrl(editingProduct.thumbnailUrl)) {
+      alert('Imagem inválida. Envie a imagem para o Cloudflare R2 antes de salvar.');
+      return;
+    }
+
     const priceNum = Number(editingProduct.price) || 19.90;
     const galleryArr = Array.isArray(editingProduct.galleryImages)
       ? editingProduct.galleryImages.filter(img => typeof img === 'string' && img.trim() !== '')
       : (typeof editingProduct.galleryImages === 'string' && (editingProduct.galleryImages as string).trim() !== ''
           ? (editingProduct.galleryImages as string).split(',').map(s => s.trim()).filter(Boolean)
           : []);
+
+    if (galleryArr.some(img => !isValidHttpsUrl(img))) {
+      alert('Imagem inválida na galeria. Envie a imagem para o Cloudflare R2 antes de salvar.');
+      return;
+    }
 
     const fullProduct: Product = {
       id: editingProduct.id || `prod-${Date.now()}`,
@@ -558,6 +595,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
               }`}
             >
               <Settings className="w-3.5 h-3.5" /> Configurações
+            </button>
+
+            <button
+              onClick={() => setActiveTab('diagnostico')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                activeTab === 'diagnostico' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
+              }`}
+            >
+              <ImageIcon className="w-3.5 h-3.5" /> Diagnóstico de Imagens
             </button>
 
             <div className="h-5 w-px bg-slate-200 mx-1" />
@@ -1609,6 +1655,144 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
               </div>
 
             </div>
+          </div>
+        )}
+
+        {/* TAB DIAGNÓSTICO DE IMAGENS */}
+        {activeTab === 'diagnostico' && (
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs space-y-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                  <ImageIcon className="w-5 h-5 text-amber-600" />
+                  <span>Diagnóstico de Imagens</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">Auditoria técnica em tempo real de infraestrutura e integridade de imagens</p>
+              </div>
+              <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
+                Modo: Somente Admin
+              </span>
+            </div>
+
+            {/* STATUS DA INFRAESTRUTURA */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                <span className="text-slate-500 font-bold uppercase text-[10px]">Firebase Project ID</span>
+                <div className="text-sm font-extrabold text-slate-900 font-mono">materiais-criativos</div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                <span className="text-slate-500 font-bold uppercase text-[10px]">Coleção do Firestore</span>
+                <div className="text-sm font-extrabold text-slate-900 font-mono">products</div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                <span className="text-slate-500 font-bold uppercase text-[10px]">Total de Produtos Publicados</span>
+                <div className="text-sm font-extrabold text-teal-700">
+                  {products.filter(p => p.status === 'published').length} produtos
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                <span className="text-slate-500 font-bold uppercase text-[10px]">R2 Bucket Name</span>
+                <div className="text-sm font-extrabold text-slate-900 font-mono">materiais-criativos</div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                <span className="text-slate-500 font-bold uppercase text-[10px]">Status do Último Upload R2</span>
+                <div className={`text-sm font-extrabold ${lastR2UploadStatus === 'Sucesso' ? 'text-emerald-700' : lastR2UploadStatus === 'Erro' ? 'text-rose-700' : 'text-slate-600'}`}>
+                  {lastR2UploadStatus}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+                <span className="text-slate-500 font-bold uppercase text-[10px]">Modo de Dados</span>
+                <div className="text-sm font-extrabold text-indigo-700">
+                  {isFirebaseConfigured ? 'Firestore Real (Ativo)' : 'Local State (Sem Firebase)'}
+                </div>
+              </div>
+            </div>
+
+            {/* ÚLTIMO ERRO OU SUCESSO DE UPLOAD */}
+            {lastR2UploadError && (
+              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 space-y-1">
+                <strong className="font-bold flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 text-rose-600" />
+                  Último Erro de Upload R2:
+                </strong>
+                <p className="font-mono text-[11px]">{lastR2UploadError}</p>
+              </div>
+            )}
+
+            {lastR2UploadUrl && (
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1">
+                <strong className="font-bold">Última URL Pública Gerada pelo R2:</strong>
+                <div className="font-mono text-[11px] select-all break-all bg-white p-2 rounded-xl border border-emerald-200">
+                  {lastR2UploadUrl}
+                </div>
+              </div>
+            )}
+
+            {/* AUDITORIA INDIVIDUAL DE PRODUTOS */}
+            <div className="space-y-4">
+              <h3 className="font-extrabold text-slate-900 text-sm">Auditoria de URLs nos Produtos Cadastrados</h3>
+              <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 font-bold text-slate-800 uppercase tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">Produto</th>
+                      <th className="p-3">Imagem Principal</th>
+                      <th className="p-3">Tipo da URL</th>
+                      <th className="p-3">Galeria</th>
+                      <th className="p-3 text-right">Status URL</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {products.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="p-4 text-center text-slate-400">Nenhum produto encontrado.</td>
+                      </tr>
+                    ) : (
+                      products.map(p => {
+                        const img = p.mainImage || p.thumbnailUrl || '';
+                        const isHttps = img.startsWith('https://');
+                        const isDataOrBlob = img.startsWith('data:') || img.startsWith('blob:');
+                        const galleryValid = Array.isArray(p.galleryImages) && p.galleryImages.every(g => typeof g === 'string' && g.startsWith('https://'));
+
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50">
+                            <td className="p-3 font-bold text-slate-900">{p.title}</td>
+                            <td className="p-3 font-mono text-[11px] max-w-xs truncate" title={img || 'Sem imagem'}>
+                              {img || <span className="text-slate-400">Vazia</span>}
+                            </td>
+                            <td className="p-3">
+                              {isHttps ? (
+                                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">HTTPS / R2</span>
+                              ) : isDataOrBlob ? (
+                                <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[10px] font-bold">Base64 / Blob (Inválido)</span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px]">Sem URL</span>
+                              )}
+                            </td>
+                            <td className="p-3 text-slate-600">
+                              {Array.isArray(p.galleryImages) ? `${p.galleryImages.length} foto(s)` : '0'}
+                            </td>
+                            <td className="p-3 text-right">
+                              {isHttps && galleryValid ? (
+                                <span className="text-emerald-700 font-extrabold">VÁLIDO</span>
+                              ) : (
+                                <span className="text-amber-700 font-bold">VERIFICAR</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </div>
         )}
 
