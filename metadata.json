@@ -1,0 +1,6 @@
+{
+  "name": "Materiais Criativos",
+  "description": "Materiais pedagógicos em PDF para imprimir",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
