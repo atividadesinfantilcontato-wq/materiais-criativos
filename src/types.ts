@@ -5,6 +5,7 @@ export interface Product {
   shortSummary: string;
   fullDescription: string;
   skillsWorked?: string; // "O que o material ajuda a trabalhar"
+  imageUrl?: string;
   mainImage: string;
   thumbnailUrl?: string;
   galleryImages: string[];

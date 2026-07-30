@@ -25,17 +25,18 @@ interface ProductDetailPageProps {
 }
 
 export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, onNavigate }) => {
-  const [selectedImage, setSelectedImage] = useState<string>(product.mainImage || product.thumbnailUrl || '');
+  const mainImgUrl = product.imageUrl || product.mainImage || product.thumbnailUrl || '';
+  const [selectedImage, setSelectedImage] = useState<string>(mainImgUrl);
   const [imageError, setImageError] = useState<boolean>(false);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (product) {
-      setSelectedImage(product.mainImage || product.thumbnailUrl || '');
+      setSelectedImage(product.imageUrl || product.mainImage || product.thumbnailUrl || '');
       setImageError(false);
       trackProductView(product);
     }
-  }, [product?.id, product?.mainImage, product?.thumbnailUrl]);
+  }, [product?.id, product?.imageUrl, product?.mainImage, product?.thumbnailUrl]);
 
   useEffect(() => {
     setImageError(false);
@@ -98,9 +99,9 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
             {/* Main Image View */}
             <div className="lg:col-span-6 space-y-4">
               <div className="aspect-4/3 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shadow-inner relative flex items-center justify-center text-slate-400">
-                {(selectedImage || product.mainImage) && !imageError ? (
+                {(selectedImage || product.imageUrl || product.mainImage) && !imageError ? (
                   <img
-                    src={selectedImage || product.mainImage}
+                    src={selectedImage || product.imageUrl || product.mainImage}
                     alt={product.title}
                     onError={() => setImageError(true)}
                     className="w-full h-full object-cover"

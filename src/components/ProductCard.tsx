@@ -12,9 +12,11 @@ interface ProductCardProps {
 export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelectProduct }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const imageSrc = (product.thumbnailUrl && product.thumbnailUrl.trim() !== '') 
-    ? product.thumbnailUrl 
-    : ((product.mainImage && product.mainImage.trim() !== '') ? product.mainImage : null);
+  const imageSrc = (product.imageUrl && product.imageUrl.trim() !== '')
+    ? product.imageUrl
+    : ((product.thumbnailUrl && product.thumbnailUrl.trim() !== '') 
+      ? product.thumbnailUrl 
+      : ((product.mainImage && product.mainImage.trim() !== '') ? product.mainImage : null));
 
   useEffect(() => {
     setImageLoaded(false);

@@ -1,7 +1,6 @@
 import { collection, getDocs, doc, setDoc, deleteDoc, query } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import { Product } from '../types';
-import { getProducts, saveProducts } from './productStorage';
 
 const COLLECTION_NAME = 'products';
 
@@ -17,6 +16,7 @@ export function docToProduct(id: string, data: any): Product {
     shortSummary: data.summary || data.shortSummary || '',
     fullDescription: data.description || data.fullDescription || '',
     skillsWorked: data.skillsWorked || '',
+    imageUrl: mainImg,
     mainImage: mainImg,
     thumbnailUrl: data.thumbnailUrl || mainImg,
     galleryImages: Array.isArray(data.galleryImages) 
@@ -42,7 +42,7 @@ export function docToProduct(id: string, data: any): Product {
 function sanitizeFirestoreUrl(url?: string): string {
   if (!url) return '';
   const trimmed = url.trim();
-  if (trimmed.startsWith('https://')) {
+  if (trimmed.startsWith('https://') && !trimmed.startsWith('data:') && !trimmed.startsWith('blob:')) {
     return trimmed;
   }
   return '';
@@ -50,7 +50,7 @@ function sanitizeFirestoreUrl(url?: string): string {
 
 // Helper to convert Product to Firestore doc payload
 export function productToDoc(product: Product): Record<string, any> {
-  const mainImg = sanitizeFirestoreUrl(product.mainImage);
+  const mainImg = sanitizeFirestoreUrl(product.imageUrl || product.mainImage);
   const thumbImg = sanitizeFirestoreUrl(product.thumbnailUrl) || mainImg;
   const gallery = Array.isArray(product.galleryImages)
     ? product.galleryImages.map(img => sanitizeFirestoreUrl(img)).filter(img => typeof img === 'string' && img.trim() !== '')
@@ -86,7 +86,7 @@ export function productToDoc(product: Product): Record<string, any> {
   };
 }
 
-// Fetch all products (Firestore if configured, fallback to localStorage only if Firebase not configured)
+// Fetch all products strictly from Firestore collection 'products'
 export async function fetchProductsAsync(): Promise<Product[]> {
   if (isFirebaseConfigured && db) {
     try {
@@ -98,41 +98,37 @@ export async function fetchProductsAsync(): Promise<Product[]> {
       });
       firestoreProducts.sort((a, b) => (a.displayOrder || 99) - (b.displayOrder || 99));
       
-      // Remove any legacy local storage cache so old mock items never leak in
+      // Clean any legacy local storage cache
       try {
         localStorage.removeItem('atividades_criativas_products_v1');
       } catch (e) {}
 
       return firestoreProducts;
     } catch (err) {
-      console.warn('Failed to fetch from Firestore:', err);
+      console.error('Failed to fetch from Firestore collection products:', err);
       return [];
     }
   }
-  return getProducts();
+  return [];
 }
 
-// Save/Update product in Firestore + localStorage
+// Save/Update product strictly in Firestore collection 'products'
 export async function saveProductAsync(product: Partial<Product> & { id: string; title: string }): Promise<void> {
   if (isFirebaseConfigured && db) {
-    try {
-      const docRef = doc(db, COLLECTION_NAME, product.id);
-      const payload = productToDoc(product as Product);
-      // Set without merge so empty strings/arrays completely replace previous field values in Firestore
-      await setDoc(docRef, payload);
-    } catch (err) {
-      console.error('Error saving product to Firestore:', err);
-    }
+    const docRef = doc(db, COLLECTION_NAME, product.id);
+    const payload = productToDoc(product as Product);
+    await setDoc(docRef, payload);
+  } else {
+    throw new Error('Firebase Firestore não está configurado.');
   }
 }
 
-// Delete product from Firestore + localStorage
+// Delete product strictly from Firestore collection 'products'
 export async function deleteProductAsync(productId: string): Promise<void> {
   if (isFirebaseConfigured && db) {
-    try {
-      await deleteDoc(doc(db, COLLECTION_NAME, productId));
-    } catch (err) {
-      console.error('Error deleting product from Firestore:', err);
-    }
+    await deleteDoc(doc(db, COLLECTION_NAME, productId));
+  } else {
+    throw new Error('Firebase Firestore não está configurado.');
   }
 }
+

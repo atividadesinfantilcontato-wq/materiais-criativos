@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Product } from './types';
-import { getProducts, getProductBySlug } from './services/productStorage';
 import { fetchProductsAsync } from './services/productFirestore';
 import { generateSlug } from './utils/slug';
 import { trackPageView } from './services/analyticsService';
@@ -12,7 +11,7 @@ import { ProductDetailPage } from './pages/ProductDetailPage';
 import { AdminPage } from './pages/AdminPage';
 
 export default function App() {
-  const [products, setProducts] = useState<Product[]>(() => getProducts());
+  const [products, setProducts] = useState<Product[]>([]);
   const [currentPath, setCurrentPath] = useState<string>(() => {
     return window.location.hash ? window.location.hash.slice(1) : window.location.pathname;
   });
@@ -25,6 +24,7 @@ export default function App() {
   useEffect(() => {
     refreshProducts();
   }, []);
+
 
   useEffect(() => {
     trackPageView(currentPath || '/');
@@ -87,7 +87,7 @@ export default function App() {
         (p.slug && p.slug.toLowerCase().trim() === searchSlug) ||
         generateSlug(p.title) === searchSlug ||
         p.id.toLowerCase() === searchSlug
-      ) || getProductBySlug(searchSlug);
+      );
       
       if (product) {
         return (
