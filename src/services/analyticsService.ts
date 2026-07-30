@@ -40,6 +40,15 @@ export interface AnalyticsEventRecord extends AnalyticsOrigin {
   browser: string;
   browserLanguage: string;
   userAgent: string;
+  city?: string;
+  region?: string;
+  country?: string;
+  countryCode?: string;
+  latitude?: string;
+  longitude?: string;
+  postalCode?: string;
+  geoStatus?: string;
+  geoSource?: string;
   createdAt: string;
   dateKey: string;
   hour: number;
@@ -229,16 +238,39 @@ export async function trackEventAsync(payload: AnalyticsEventPayload): Promise<v
       userAgent: device.userAgent,
       createdAt: now.toISOString(),
       dateKey,
-      hour: now.getHours()
+      hour: now.getHours(),
     };
 
-    if (isFirebaseConfigured && db) {
-      await addDoc(collection(db, 'analyticsEvents'), eventDoc);
-    } else {
-      const localEvents = JSON.parse(localStorage.getItem('mc_local_analytics') || '[]');
-      localEvents.push(eventDoc);
-      if (localEvents.length > 500) localEvents.shift();
-      localStorage.setItem('mc_local_analytics', JSON.stringify(localEvents));
+    // First attempt: call Vercel Serverless / Express API endpoint so Vercel Geolocation headers are captured
+    let sentToApi = false;
+    try {
+      const response = await fetch('/api/track-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventDoc),
+      });
+
+      if (response.ok) {
+        sentToApi = true;
+      }
+    } catch (apiErr) {
+      // Backend route unreachable or network error
+    }
+
+    // Fallback if API route is not available (e.g. pure client mode without backend server running)
+    if (!sentToApi) {
+      if (isFirebaseConfigured && db) {
+        await addDoc(collection(db, 'analyticsEvents'), {
+          ...eventDoc,
+          city: 'Não identificado',
+          geoStatus: 'fallback_client',
+        });
+      } else {
+        const localEvents = JSON.parse(localStorage.getItem('mc_local_analytics') || '[]');
+        localEvents.push({ ...eventDoc, city: 'Não identificado', geoStatus: 'local' });
+        if (localEvents.length > 500) localEvents.shift();
+        localStorage.setItem('mc_local_analytics', JSON.stringify(localEvents));
+      }
     }
   } catch (err) {
     console.warn('Analytics tracking error:', err);

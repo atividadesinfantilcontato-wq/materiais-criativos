@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import multer from 'multer';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { createServer as createViteServer } from 'vite';
+import trackEventHandler from './api/track-event';
 
 dotenv.config();
 
@@ -79,6 +80,9 @@ app.post('/api/upload-r2', upload.single('file'), async (req, res) => {
     return res.status(500).json({ error: error.message || 'Erro ao fazer upload da imagem para o R2.' });
   }
 });
+
+// API Route: Track Event (Vercel Geolocation + Firestore)
+app.post('/api/track-event', trackEventHandler);
 
 // API Route: Healthcheck
 app.get('/api/health', (req, res) => {

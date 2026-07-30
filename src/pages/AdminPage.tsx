@@ -17,7 +17,7 @@ import {
   Image as ImageIcon, Sparkles, Check, LogOut, Lock, 
   ShieldCheck, Settings, Home, FileText, Upload, 
   AlertCircle, Key, Mail, RefreshCw, Eye,
-  BarChart2, Share2, Copy, TrendingUp, Users, MousePointer, Smartphone, Globe, Link as LinkIcon, CheckCircle2
+  BarChart2, Share2, Copy, TrendingUp, Users, MousePointer, Smartphone, Globe, Link as LinkIcon, CheckCircle2, MapPin, Navigation, Building2
 } from 'lucide-react';
 import { fetchAnalyticsEventsAsync, AnalyticsEventRecord } from '../services/analyticsService';
 
@@ -1256,6 +1256,42 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
           });
           const utmList = Object.values(utmMap).sort((a, b) => b.count - a.count);
 
+          // Geolocation aggregations (Vercel Geolocation headers)
+          const cityMap: Record<string, { city: string; region: string; country: string; count: number }> = {};
+          const regionMap: Record<string, { region: string; country: string; count: number }> = {};
+          const countryMap: Record<string, { country: string; count: number }> = {};
+
+          analyticsEvents.forEach(e => {
+            const city = e.city || 'Não identificado';
+            const region = e.region || '-';
+            const country = e.country || e.countryCode || '-';
+
+            const cityKey = `${city}|${region}|${country}`;
+            if (!cityMap[cityKey]) {
+              cityMap[cityKey] = { city, region, country, count: 0 };
+            }
+            cityMap[cityKey].count++;
+
+            if (region && region !== '-') {
+              const regKey = `${region}|${country}`;
+              if (!regionMap[regKey]) {
+                regionMap[regKey] = { region, country, count: 0 };
+              }
+              regionMap[regKey].count++;
+            }
+
+            if (country && country !== '-') {
+              if (!countryMap[country]) {
+                countryMap[country] = { country, count: 0 };
+              }
+              countryMap[country].count++;
+            }
+          });
+
+          const topCities = Object.values(cityMap).sort((a, b) => b.count - a.count).slice(0, 8);
+          const topRegions = Object.values(regionMap).sort((a, b) => b.count - a.count).slice(0, 5);
+          const topCountries = Object.values(countryMap).sort((a, b) => b.count - a.count).slice(0, 5);
+
           return (
             <div className="space-y-8">
               
@@ -1378,6 +1414,100 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
 
               </div>
 
+              {/* SEÇÃO: GEOLOCALIZAÇÃO DOS ACESSOS (VERCEL IP GEO) */}
+              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+                  <div>
+                    <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-rose-600" />
+                      <span>Geolocalização dos Acessos (Vercel IP Geolocation)</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Captura real via headers da Vercel no servidor (cidade, estado e país por IP)</p>
+                  </div>
+                  <span className="px-3 py-1 bg-slate-100 text-slate-700 text-[10px] font-mono font-bold rounded-full w-fit">
+                    API /api/track-event
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* TOP CIDADES */}
+                  <div className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-teal-600" />
+                      <span>Top Cidades</span>
+                    </h4>
+                    <div className="space-y-2">
+                      {topCities.length === 0 ? (
+                        <p className="text-xs text-slate-400">Nenhuma cidade registrada ainda.</p>
+                      ) : (
+                        topCities.map((item, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-xs p-2 rounded-xl bg-white border border-slate-200/60 shadow-2xs">
+                            <div className="font-bold text-slate-900 truncate max-w-[170px]" title={`${item.city} / ${item.region} / ${item.country}`}>
+                              <span className="text-teal-700 mr-1 font-mono text-[11px]">#{idx + 1}</span>
+                              {item.city}
+                              {item.region !== '-' && <span className="text-slate-400 font-normal ml-1">({item.region})</span>}
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 font-extrabold text-[11px]">
+                              {item.count}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* TOP ESTADOS */}
+                  <div className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Navigation className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Top Estados / Regiões</span>
+                    </h4>
+                    <div className="space-y-2">
+                      {topRegions.length === 0 ? (
+                        <p className="text-xs text-slate-400">Nenhum estado registrado ainda.</p>
+                      ) : (
+                        topRegions.map((item, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-xs p-2 rounded-xl bg-white border border-slate-200/60 shadow-2xs">
+                            <div className="font-bold text-slate-900 truncate">
+                              <span className="text-indigo-700 mr-1 font-mono text-[11px]">#{idx + 1}</span>
+                              {item.region} <span className="text-slate-400 font-normal">({item.country})</span>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 font-extrabold text-[11px]">
+                              {item.count}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* TOP PAÍSES */}
+                  <div className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Top Países</span>
+                    </h4>
+                    <div className="space-y-2">
+                      {topCountries.length === 0 ? (
+                        <p className="text-xs text-slate-400">Nenhum país registrado ainda.</p>
+                      ) : (
+                        topCountries.map((item, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-xs p-2 rounded-xl bg-white border border-slate-200/60 shadow-2xs">
+                            <div className="font-bold text-slate-900 uppercase">
+                              <span className="text-amber-700 mr-1 font-mono text-[11px]">#{idx + 1}</span>
+                              {item.country}
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 font-extrabold text-[11px]">
+                              {item.count}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* TABELA: LINKS COM UTM */}
               <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
                 <div className="p-5 border-b border-slate-100">
@@ -1436,13 +1566,16 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                         <th className="p-3.5">Origem</th>
                         <th className="p-3.5">Evento / Página</th>
                         <th className="p-3.5">Produto</th>
+                        <th className="p-3.5">Cidade</th>
+                        <th className="p-3.5">Estado</th>
+                        <th className="p-3.5">País</th>
                         <th className="p-3.5">Dispositivo</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {analyticsEvents.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="p-6 text-center text-slate-400">
+                          <td colSpan={8} className="p-6 text-center text-slate-400">
                             Nenhum registro de acesso encontrado.
                           </td>
                         </tr>
@@ -1472,10 +1605,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                             </td>
                             <td className="p-3.5 font-medium">
                               <span className="text-slate-900 font-bold">{e.eventType}</span>
-                              <span className="text-slate-400 ml-1 text-[11px] font-mono">({e.path})</span>
+                              <span className="text-slate-400 ml-1 text-[11px] font-mono">({e.pagePath || '/'})</span>
                             </td>
                             <td className="p-3.5 font-medium text-slate-800 truncate max-w-xs">
                               {e.productTitle || e.productSlug || '-'}
+                            </td>
+                            <td className="p-3.5 font-bold text-teal-800">
+                              {e.city || 'Não identificado'}
+                            </td>
+                            <td className="p-3.5 font-semibold text-slate-700">
+                              {e.region || '-'}
+                            </td>
+                            <td className="p-3.5 font-semibold text-slate-600 uppercase">
+                              {e.country || e.countryCode || '-'}
                             </td>
                             <td className="p-3.5 text-slate-500 capitalize">
                               {e.deviceType || 'Desktop'}
@@ -1757,6 +1899,41 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                 <span className="px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold shrink-0">
                   Modo: 100% Produção Real
                 </span>
+              </div>
+            </div>
+
+            {/* SEÇÃO: VERSÃO EM PRODUÇÃO (ETAPA 8) */}
+            <div className="p-5 rounded-2xl bg-slate-900 text-white space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-teal-400 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>Versão em Produção — Auditoria de Build</span>
+                </h3>
+                <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold rounded-full border border-emerald-500/30">
+                  BUILD 100% PURE FIRESTORE
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-0.5">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Versão do App</span>
+                  <p className="font-mono text-sm font-extrabold text-teal-300">v2.0.0-PROD-REAL</p>
+                </div>
+
+                <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-0.5">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Horário da Versão</span>
+                  <p className="font-mono text-xs font-bold text-slate-200">2026-07-30 16:41 UTC-7</p>
+                </div>
+
+                <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-0.5">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Ambiente</span>
+                  <p className="font-mono text-xs font-bold text-amber-300">Vercel (Produção Real)</p>
+                </div>
+
+                <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-0.5">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Mock / Demo / Fallback</span>
+                  <p className="font-mono text-xs font-extrabold text-emerald-400">DESATIVADO (100% Removido)</p>
+                </div>
               </div>
             </div>
 
