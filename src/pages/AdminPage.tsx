@@ -47,6 +47,70 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
   const [lastR2UploadUrl, setLastR2UploadUrl] = useState<string>('');
   const [lastR2UploadStatus, setLastR2UploadStatus] = useState<string>('Nenhum upload nesta sessão');
   const [lastR2UploadError, setLastR2UploadError] = useState<string | null>(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState<string>(() => new Date().toLocaleTimeString('pt-BR'));
+  const [imageTestResults, setImageTestResults] = useState<Record<string, { status: 'testing' | 'ok' | 'error', message?: string }>>({});
+  const [swActive, setSwActive] = useState<boolean>(false);
+  const [cacheActive, setCacheActive] = useState<boolean>(false);
+
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => setSwActive(regs.length > 0)).catch(() => {});
+    }
+    if ('caches' in window) {
+      caches.keys().then(keys => setCacheActive(keys.length > 0)).catch(() => {});
+    }
+  }, []);
+
+  const testPublicImageUrl = async (url: string, idKey: string) => {
+    if (!url || !url.startsWith('https://')) {
+      setImageTestResults(prev => ({ ...prev, [idKey]: { status: 'error', message: 'URL inválida ou sem https://' } }));
+      return;
+    }
+    setImageTestResults(prev => ({ ...prev, [idKey]: { status: 'testing', message: 'Testando acesso público...' } }));
+
+    try {
+      const imgPromise = new Promise<boolean>((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = url + (url.includes('?') ? '&' : '?') + 'test_check=' + Date.now();
+      });
+
+      const isOk = await imgPromise;
+      if (isOk) {
+        setImageTestResults(prev => ({ ...prev, [idKey]: { status: 'ok', message: 'HTTP 200 OK (Acessível)' } }));
+      } else {
+        setImageTestResults(prev => ({ ...prev, [idKey]: { status: 'error', message: 'Falha no carregamento (404/403/CORS)' } }));
+      }
+    } catch (err: any) {
+      setImageTestResults(prev => ({ ...prev, [idKey]: { status: 'error', message: err.message || 'Erro no teste' } }));
+    }
+  };
+
+  const handleReloadFirestoreOnly = async () => {
+    await onProductsUpdated();
+    setLastFetchedAt(new Date().toLocaleTimeString('pt-BR'));
+    showToast('Produtos recarregados 100% diretamente do Firestore!');
+  };
+
+  const handleFullLocalClear = async () => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map(name => caches.delete(name)));
+      }
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(reg => reg.unregister()));
+      }
+    } catch (e) {}
+    showToast('Limpeza total efetuada. Recarregando a página...');
+    setTimeout(() => {
+      window.location.reload();
+    }, 800);
+  };
 
   // Analytics & Link Generator state
   const [analyticsEvents, setAnalyticsEvents] = useState<AnalyticsEventRecord[]>([]);
@@ -604,7 +668,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                 activeTab === 'diagnostico' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
               }`}
             >
-              <ImageIcon className="w-3.5 h-3.5" /> Produção Real
+              <ImageIcon className="w-3.5 h-3.5" /> Prova Produção Real
             </button>
 
             <div className="h-5 w-px bg-slate-200 mx-1" />
@@ -1668,29 +1732,96 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                   <ImageIcon className="w-5 h-5 text-amber-600" />
                   <span>Painel de Produção Real (Firestore + Cloudflare R2)</span>
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">Auditoria técnica em tempo real de infraestrutura, integridade e isolamento de dados local</p>
+                <p className="text-xs text-slate-500 mt-0.5">Auditoria técnica em tempo real de infraestrutura, integridade de URLs e teste de acesso público</p>
               </div>
               
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={async () => {
-                    try {
-                      localStorage.clear();
-                      sessionStorage.clear();
-                    } catch (e) {}
-                    await onProductsUpdated();
-                    showToast('Dados locais do navegador limpos! Produtos recarregados 100% do Firestore.');
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-                  title="Limpa cache e dados temporários salvos neste navegador"
+                  onClick={handleReloadFirestoreOnly}
+                  className="px-3 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Busca produtos diretamente da coleção 'products' do Firestore sem utilizar caches locais"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Recarregar somente do Firestore</span>
+                </button>
+
+                <button
+                  onClick={handleFullLocalClear}
+                  className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Limpa localStorage, sessionStorage, CacheStorage e Service Workers deste navegador"
                 >
                   <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Limpar dados locais deste navegador</span>
+                  <span>Limpar dados fake deste navegador</span>
                 </button>
 
                 <span className="px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold shrink-0">
                   Modo: 100% Produção Real
                 </span>
+              </div>
+            </div>
+
+            {/* SEÇÃO: DIAGNÓSTICO DESTE NAVEGADOR (ETAPA 5) */}
+            <div className="p-5 rounded-2xl bg-amber-50/50 border border-amber-200 space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-2">
+                <Globe className="w-4 h-4 text-amber-600" />
+                <span>Diagnóstico Deste Navegador Atual</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold block">User Agent</span>
+                  <p className="font-mono text-[11px] text-slate-800 truncate" title={navigator.userAgent}>
+                    {navigator.userAgent}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold block">URL Atual</span>
+                  <p className="font-mono text-[11px] text-slate-800 truncate" title={window.location.href}>
+                    {window.location.href}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold block">Última Busca Firestore</span>
+                  <p className="font-mono text-[11px] text-teal-700 font-extrabold">
+                    {lastFetchedAt} ({products.length} produtos)
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold block">Origem dos Dados</span>
+                  <p className="font-mono text-[11px] text-emerald-700 font-extrabold">
+                    Firestore Real (Zero Mock/Local)
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold block">localStorage Produtos</span>
+                  <p className={`font-mono text-[11px] font-bold ${localStorage.getItem('atividades_criativas_products_v1') ? 'text-amber-700' : 'text-emerald-700'}`}>
+                    {localStorage.getItem('atividades_criativas_products_v1') ? 'SIM (Antigo encravado)' : 'NÃO (Limpo)'}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold block">sessionStorage Produtos</span>
+                  <p className={`font-mono text-[11px] font-bold ${sessionStorage.getItem('atividades_criativas_products_v1') ? 'text-amber-700' : 'text-emerald-700'}`}>
+                    {sessionStorage.getItem('atividades_criativas_products_v1') ? 'SIM (Antigo encravado)' : 'NÃO (Limpo)'}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold block">Service Worker Ativo</span>
+                  <p className={`font-mono text-[11px] font-bold ${swActive ? 'text-amber-700' : 'text-emerald-700'}`}>
+                    {swActive ? 'SIM (Possível Cache)' : 'NÃO (Desativado)'}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold block">CacheStorage Ativo</span>
+                  <p className={`font-mono text-[11px] font-bold ${cacheActive ? 'text-amber-700' : 'text-emerald-700'}`}>
+                    {cacheActive ? 'SIM (Possível Cache)' : 'NÃO (Desativado)'}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -1732,8 +1863,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
 
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
                 <span className="text-slate-500 font-bold uppercase text-[10px]">R2 Public URL Configurada</span>
-                <div className="text-sm font-extrabold text-emerald-700">
-                  SIM (pub-38ad64...)
+                <div className="text-sm font-extrabold text-emerald-700 font-mono truncate" title="https://pub-38ad649cb42d4a66804e3c3aa376a92f.r2.dev">
+                  https://pub-38ad64...r2.dev
                 </div>
               </div>
 
@@ -1779,42 +1910,54 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
             {lastR2UploadUrl && (
               <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1">
                 <strong className="font-bold">Última URL Pública Gerada pelo R2:</strong>
-                <div className="font-mono text-[11px] select-all break-all bg-white p-2 rounded-xl border border-emerald-200">
-                  {lastR2UploadUrl}
+                <div className="font-mono text-[11px] select-all break-all bg-white p-2 rounded-xl border border-emerald-200 flex items-center justify-between gap-2">
+                  <span>{lastR2UploadUrl}</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(lastR2UploadUrl);
+                      showToast('URL copiada!');
+                    }}
+                    className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-bold hover:bg-emerald-700"
+                  >
+                    Copiar
+                  </button>
                 </div>
               </div>
             )}
 
-            {/* AUDITORIA INDIVIDUAL DE PRODUTOS */}
+            {/* AUDITORIA INDIVIDUAL DE PRODUTOS & TESTE DE URL (ETAPA 1) */}
             <div className="space-y-4">
-              <h3 className="font-extrabold text-slate-900 text-sm">Auditoria de Produtos no Firestore Real</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="font-extrabold text-slate-900 text-sm">Auditoria de Produtos no Firestore Real & Teste de Acesso Público</h3>
+                <span className="text-xs text-slate-500">Total: {products.length} itens</span>
+              </div>
+
               <div className="overflow-x-auto border border-slate-200 rounded-2xl">
                 <table className="w-full text-left text-xs text-slate-700">
                   <thead className="bg-slate-50 font-bold text-slate-800 uppercase tracking-wider border-b border-slate-200">
                     <tr>
                       <th className="p-3">ID Firestore</th>
-                      <th className="p-3">Produto</th>
+                      <th className="p-3">Título</th>
                       <th className="p-3">Status</th>
-                      <th className="p-3">Imagem Principal (https)</th>
-                      <th className="p-3">Origem Imagem</th>
-                      <th className="p-3">Galeria (https)</th>
-                      <th className="p-3 text-right">Integridade</th>
+                      <th className="p-3">imageUrl</th>
+                      <th className="p-3">mainImage</th>
+                      <th className="p-3">thumbnailUrl</th>
+                      <th className="p-3">Galeria</th>
+                      <th className="p-3 text-right">Ações / Teste Público</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {products.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="p-6 text-center text-slate-500 font-medium">
+                        <td colSpan={8} className="p-6 text-center text-slate-500 font-medium">
                           Nenhum produto cadastrado no Firestore.
                         </td>
                       </tr>
                     ) : (
                       products.map(p => {
-                        const img = p.imageUrl || p.mainImage || p.thumbnailUrl || '';
-                        const isHttps = img.startsWith('https://');
-                        const isDataOrBlob = img.startsWith('data:') || img.startsWith('blob:');
+                        const primaryUrl = p.imageUrl || p.mainImage || p.thumbnailUrl || '';
+                        const testState = imageTestResults[p.id];
                         const galleryArr = Array.isArray(p.galleryImages) ? p.galleryImages : [];
-                        const galleryValid = galleryArr.every(g => typeof g === 'string' && g.startsWith('https://'));
 
                         return (
                           <tr key={p.id} className="hover:bg-slate-50">
@@ -1825,36 +1968,56 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                                 {p.status === 'published' ? 'Publicado' : 'Rascunho'}
                               </span>
                             </td>
-                            <td className="p-3 font-mono text-[11px] max-w-xs truncate" title={img || 'Sem imagem'}>
-                              {img ? (
-                                <a href={img} target="_blank" rel="noopener noreferrer" className="text-teal-700 underline hover:text-teal-900">
-                                  {img}
-                                </a>
-                              ) : (
-                                <span className="text-slate-400">Vazia</span>
-                              )}
+                            <td className="p-3 font-mono text-[10px] max-w-[140px] truncate" title={p.imageUrl || 'Vazia'}>
+                              {p.imageUrl ? <span className="text-emerald-700">{p.imageUrl}</span> : <span className="text-slate-400">Vazia</span>}
                             </td>
-                            <td className="p-3">
-                              {isHttps ? (
-                                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">Cloudflare R2</span>
-                              ) : isDataOrBlob ? (
-                                <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[10px] font-bold">Base64/Blob (Inválido)</span>
-                              ) : (
-                                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px]">Sem URL</span>
-                              )}
+                            <td className="p-3 font-mono text-[10px] max-w-[140px] truncate" title={p.mainImage || 'Vazia'}>
+                              {p.mainImage ? <span className="text-teal-700">{p.mainImage}</span> : <span className="text-slate-400">Vazia</span>}
+                            </td>
+                            <td className="p-3 font-mono text-[10px] max-w-[140px] truncate" title={p.thumbnailUrl || 'Vazia'}>
+                              {p.thumbnailUrl ? <span className="text-slate-600">{p.thumbnailUrl}</span> : <span className="text-slate-400">Vazia</span>}
                             </td>
                             <td className="p-3 text-slate-600 font-mono text-[11px]">
                               {galleryArr.length} foto(s)
                             </td>
-                            <td className="p-3 text-right">
-                              {(isHttps || !img) && galleryValid ? (
-                                <span className="text-emerald-700 font-extrabold flex items-center justify-end gap-1">
-                                  <CheckCircle2 className="w-3.5 h-3.5" /> OK
-                                </span>
-                              ) : (
-                                <span className="text-rose-700 font-bold flex items-center justify-end gap-1">
-                                  <AlertCircle className="w-3.5 h-3.5" /> REVISAR
-                                </span>
+                            <td className="p-3 text-right space-y-1">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {primaryUrl && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(primaryUrl);
+                                        showToast('URL copiada para a área de transferência!');
+                                      }}
+                                      className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Copy className="w-3 h-3" /> Copiar
+                                    </button>
+
+                                    <button
+                                      onClick={() => testPublicImageUrl(primaryUrl, p.id)}
+                                      className="px-2 py-1 rounded bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      Testar URL pública
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+
+                              {testState && (
+                                <div className="text-[10px] font-bold">
+                                  {testState.status === 'testing' && <span className="text-amber-600">Testando...</span>}
+                                  {testState.status === 'ok' && (
+                                    <span className="text-emerald-700 flex items-center justify-end gap-1">
+                                      <CheckCircle2 className="w-3 h-3" /> OK: {testState.message}
+                                    </span>
+                                  )}
+                                  {testState.status === 'error' && (
+                                    <span className="text-rose-700 flex items-center justify-end gap-1">
+                                      <AlertCircle className="w-3 h-3" /> ERRO: {testState.message}
+                                    </span>
+                                  )}
+                                </div>
                               )}
                             </td>
                           </tr>

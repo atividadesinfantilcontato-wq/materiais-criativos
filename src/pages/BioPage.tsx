@@ -143,15 +143,21 @@ export const BioPage: React.FC<BioPageProps> = ({ products, onNavigate, onSelect
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {displayProducts.map((product) => (
-            <ProductCard
-              key={product.id}
-              product={product}
-              onSelectProduct={onSelectProduct}
-            />
-          ))}
-        </div>
+        {displayProducts.length === 0 ? (
+          <div className="bg-white rounded-2xl p-8 text-center border border-slate-200 max-w-sm mx-auto my-6 space-y-2">
+            <p className="text-slate-600 font-semibold text-sm">Nenhum material publicado ainda.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {displayProducts.map((product) => (
+              <ProductCard
+                key={product.id}
+                product={product}
+                onSelectProduct={onSelectProduct}
+              />
+            ))}
+          </div>
+        )}
 
         <div className="mt-8 text-center">
           <button

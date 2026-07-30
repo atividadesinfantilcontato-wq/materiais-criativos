@@ -109,17 +109,23 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ products, onSelect
         {filteredProducts.length === 0 ? (
           <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 max-w-md mx-auto my-12 space-y-3">
             <Info className="w-10 h-10 text-slate-400 mx-auto" />
-            <h3 className="text-lg font-bold text-slate-800">Nenhum material encontrado</h3>
-            <p className="text-xs text-slate-500">Tente buscar por outros termos ou selecionar outra categoria.</p>
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setSelectedCategory('Todas');
-              }}
-              className="mt-2 px-4 py-2 rounded-xl bg-teal-50 text-teal-700 text-xs font-bold"
-            >
-              Limpar filtros
-            </button>
+            <h3 className="text-lg font-bold text-slate-800">
+              {publishedProducts.length === 0 ? 'Nenhum material publicado ainda.' : 'Nenhum material encontrado'}
+            </h3>
+            <p className="text-xs text-slate-500">
+              {publishedProducts.length === 0 ? 'Novos materiais serão adicionados em breve.' : 'Tente buscar por outros termos ou selecionar outra categoria.'}
+            </p>
+            {publishedProducts.length > 0 && (
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedCategory('Todas');
+                }}
+                className="mt-2 px-4 py-2 rounded-xl bg-teal-50 text-teal-700 text-xs font-bold"
+              >
+                Limpar filtros
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6 sm:gap-8">
