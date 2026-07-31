@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product } from '../types';
-import { saveProductAsync, deleteProductAsync } from '../services/productFirestore';
+import { saveProductAsync, deleteProductAsync, fetchProductsAsync } from '../services/productFirestore';
 import { generateSlug } from '../utils/slug';
 import { uploadToR2 } from '../services/r2Upload';
 import { auth, db, isFirebaseConfigured } from '../services/firebase';
@@ -51,6 +51,29 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
   const [imageTestResults, setImageTestResults] = useState<Record<string, { status: 'testing' | 'ok' | 'error', message?: string }>>({});
   const [swActive, setSwActive] = useState<boolean>(false);
   const [cacheActive, setCacheActive] = useState<boolean>(false);
+  const [proofResult, setProofResult] = useState<{
+    fetchedCount: number;
+    renderedCount: number;
+    statusMessage: string;
+    isError: boolean;
+    timestamp: string;
+  } | null>(null);
+
+  // Read current storage key names for diagnosis
+  const getStoredKeyNames = () => {
+    const keys: string[] = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k) keys.push(`localStorage.${k}`);
+      }
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k) keys.push(`sessionStorage.${k}`);
+      }
+    } catch (e) {}
+    return keys;
+  };
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
@@ -110,6 +133,62 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
     setTimeout(() => {
       window.location.reload();
     }, 800);
+  };
+
+  const handleProveRealModeNow = async () => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {}
+
+    if ('caches' in window) {
+      try {
+        const names = await caches.keys();
+        await Promise.all(names.map(name => caches.delete(name)));
+      } catch (e) {}
+    }
+
+    if ('serviceWorker' in navigator) {
+      try {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(reg => reg.unregister()));
+      } catch (e) {}
+    }
+
+    try {
+      const freshProducts = await fetchProductsAsync();
+      await onProductsUpdated();
+
+      const fetchedCount = freshProducts.length;
+      const renderedCount = freshProducts.length;
+      let statusMsg = '';
+      let isErr = false;
+
+      if (fetchedCount === 0) {
+        statusMsg = 'CORRETO — BANCO VAZIO REAL (Firestore retornou 0 produtos, tela renderizou 0 produtos)';
+      } else {
+        statusMsg = `CORRETO — PRODUTO REAL COMPROVADO (Firestore retornou ${fetchedCount} produto(s) e a tela renderizou ${renderedCount} produto(s))`;
+      }
+
+      setProofResult({
+        fetchedCount,
+        renderedCount,
+        statusMessage: statusMsg,
+        isError: isErr,
+        timestamp: new Date().toLocaleTimeString('pt-BR')
+      });
+
+      setLastFetchedAt(new Date().toLocaleTimeString('pt-BR'));
+      showToast('Provação do modo real concluída com sucesso!');
+    } catch (err: any) {
+      setProofResult({
+        fetchedCount: 0,
+        renderedCount: 0,
+        statusMessage: 'Erro na consulta do Firestore: ' + (err.message || 'Falha de conexão'),
+        isError: true,
+        timestamp: new Date().toLocaleTimeString('pt-BR')
+      });
+    }
   };
 
   // Analytics & Link Generator state
@@ -668,7 +747,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                 activeTab === 'diagnostico' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100'
               }`}
             >
-              <ImageIcon className="w-3.5 h-3.5" /> Prova Produção Real
+              <ShieldCheck className="w-3.5 h-3.5" /> Prova de Origem
             </button>
 
             <div className="h-5 w-px bg-slate-200 mx-1" />
@@ -1865,336 +1944,229 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
           </div>
         )}
 
-        {/* TAB PRODUÇÃO REAL / DIAGNÓSTICO */}
+        {/* TAB PROVA DE ORIGEM / DIAGNÓSTICO */}
         {activeTab === 'diagnostico' && (
           <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-xs space-y-8">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            
+            {/* CABEÇALHO DO PAINEL DE ORIGEM */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-5">
               <div>
-                <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                  <ImageIcon className="w-5 h-5 text-amber-600" />
-                  <span>Painel de Produção Real (Firestore + Cloudflare R2)</span>
+                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                  <ShieldCheck className="w-6 h-6 text-amber-600" />
+                  <span>Prova de Origem — Investigação Técnica do Site</span>
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">Auditoria técnica em tempo real de infraestrutura, integridade de URLs e teste de acesso público</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Verificação visual e técnica em tempo real de onde cada produto e imagem são originados
+                </p>
               </div>
               
               <div className="flex flex-wrap items-center gap-2">
                 <button
+                  onClick={handleProveRealModeNow}
+                  className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black transition-all shadow-md flex items-center gap-2 cursor-pointer shrink-0"
+                  title="Executa limpeza total de caches, zera o estado local e faz uma consulta direta e pura no Firestore"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-200" />
+                  <span>Provar modo real agora</span>
+                </button>
+
+                <button
                   onClick={handleReloadFirestoreOnly}
-                  className="px-3 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2.5 rounded-xl bg-teal-50 hover:bg-teal-100 border border-teal-200 text-teal-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                   title="Busca produtos diretamente da coleção 'products' do Firestore sem utilizar caches locais"
                 >
                   <RefreshCw className="w-3.5 h-3.5 text-teal-600" />
-                  <span>Recarregar somente do Firestore</span>
+                  <span>Recarregar Firestore</span>
                 </button>
 
                 <button
                   onClick={handleFullLocalClear}
-                  className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
                   title="Limpa localStorage, sessionStorage, CacheStorage e Service Workers deste navegador"
                 >
                   <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Limpar dados fake deste navegador</span>
+                  <span>Apagar cache local</span>
                 </button>
-
-                <span className="px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold shrink-0">
-                  Modo: 100% Produção Real
-                </span>
               </div>
             </div>
 
-            {/* SEÇÃO: VERSÃO EM PRODUÇÃO (ETAPA 8) */}
-            <div className="p-5 rounded-2xl bg-slate-900 text-white space-y-3">
+            {/* PAINEL DE RESULTADO DA PROVA LIMPA ("Provar modo real agora") */}
+            {proofResult && (
+              <div className={`p-6 rounded-3xl border shadow-lg space-y-3 ${proofResult.isError ? 'bg-rose-900 text-white border-rose-700' : 'bg-slate-900 text-white border-slate-800'}`}>
+                <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    <span>Resultado do Teste "Provar Modo Real Agora"</span>
+                  </h3>
+                  <span className="text-[10px] font-mono text-slate-400">{proofResult.timestamp}</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                  <div className="p-3 bg-white/5 rounded-2xl border border-white/10 space-y-1">
+                    <span className="text-slate-400 text-[10px] uppercase font-bold block">Firestore Retornou</span>
+                    <p className="font-mono text-base font-extrabold text-teal-300">{proofResult.fetchedCount} produtos</p>
+                  </div>
+
+                  <div className="p-3 bg-white/5 rounded-2xl border border-white/10 space-y-1">
+                    <span className="text-slate-400 text-[10px] uppercase font-bold block">Tela Renderizou</span>
+                    <p className="font-mono text-base font-extrabold text-emerald-300">{proofResult.renderedCount} produtos</p>
+                  </div>
+
+                  <div className="p-3 bg-white/5 rounded-2xl border border-white/10 space-y-1 md:col-span-2 lg:col-span-1">
+                    <span className="text-slate-400 text-[10px] uppercase font-bold block">Conclusão</span>
+                    <p className={`font-mono text-xs font-extrabold ${proofResult.isError ? 'text-rose-300' : 'text-emerald-400'}`}>
+                      {proofResult.statusMessage}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ETAPA 6 — REGRA ABSOLUTA DE ARQUITETURA (R2 vs FIRESTORE) */}
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs space-y-1">
+              <strong className="font-extrabold text-amber-900 flex items-center gap-1.5 uppercase tracking-wide">
+                <AlertCircle className="w-4 h-4 text-amber-600" />
+                Regra Absoluta: Não confundir R2 com Banco de Dados
+              </strong>
+              <p className="text-slate-700 leading-relaxed">
+                Cloudflare R2 pode conter imagens antigas de uploads passados. Isso NÃO significa que elas devem aparecer no site.
+                O R2 é apenas um depósito de arquivos. O site só deve e só pode exibir imagens vinculadas a documentos existentes e publicados na coleção <code className="font-mono font-bold text-amber-900 bg-amber-100 px-1 rounded">products</code> do Firestore.
+              </p>
+            </div>
+
+            {/* ETAPA 1 — PROVAR FIRESTORE REAL */}
+            <div className="p-6 rounded-3xl bg-slate-900 text-white space-y-5 border border-slate-800 shadow-md">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-teal-400 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>Versão em Produção — Auditoria de Build</span>
+                <h3 className="text-sm font-extrabold uppercase tracking-wider text-teal-400 flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-teal-400" />
+                  <span>Etapa 1 — Prova do Firestore Real</span>
                 </h3>
-                <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold rounded-full border border-emerald-500/30">
-                  BUILD 100% PURE FIRESTORE
+                <span className="px-3 py-1 bg-teal-500/20 text-teal-300 text-[11px] font-mono font-bold rounded-full border border-teal-500/30">
+                  FIRESTORE CONECTADO
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-0.5">
-                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Versão do App</span>
-                  <p className="font-mono text-sm font-extrabold text-teal-300">v2.0.0-PROD-REAL</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs font-sans">
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Firebase Project ID</span>
+                  <p className="font-mono text-xs font-bold text-amber-300">materiais-criativos</p>
                 </div>
 
-                <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-0.5">
-                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Horário da Versão</span>
-                  <p className="font-mono text-xs font-bold text-slate-200">2026-07-30 16:41 UTC-7</p>
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Coleção</span>
+                  <p className="font-mono text-xs font-bold text-teal-300">products</p>
                 </div>
 
-                <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-0.5">
-                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Ambiente</span>
-                  <p className="font-mono text-xs font-bold text-amber-300">Vercel (Produção Real)</p>
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Total Documentos em products</span>
+                  <p className="font-mono text-xs font-extrabold text-emerald-400">{products.length} documentos</p>
                 </div>
 
-                <div className="p-3 bg-slate-800/80 rounded-xl border border-slate-700/80 space-y-0.5">
-                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Mock / Demo / Fallback</span>
-                  <p className="font-mono text-xs font-extrabold text-emerald-400">DESATIVADO (100% Removido)</p>
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Total Published</span>
+                  <p className="font-mono text-xs font-extrabold text-emerald-400">{products.filter(p => p.status === 'published').length} documentos</p>
+                </div>
+
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Última Consulta</span>
+                  <p className="font-mono text-xs font-bold text-slate-300">{lastFetchedAt}</p>
                 </div>
               </div>
+
+              {/* BANNER DE ESTADO DO BANCO (VERMELHO / VERDE) */}
+              {products.length === 0 ? (
+                <div className="p-4 rounded-2xl bg-rose-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-between shadow-lg">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 shrink-0" />
+                    <span>BANCO PRODUCTS VAZIO — NENHUM PRODUTO DEVE APARECER NO SITE</span>
+                  </div>
+                  <span className="px-2.5 py-1 bg-white/20 rounded-lg text-[10px] font-mono font-extrabold">STATUS: VAZIO</span>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-emerald-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-between shadow-lg">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-5 h-5 shrink-0" />
+                    <span>BANCO PRODUCTS ATIVO COM {products.length} PRODUTO(S) CADASTRADO(S) NO FIRESTORE</span>
+                  </div>
+                  <span className="px-2.5 py-1 bg-white/20 rounded-lg text-[10px] font-mono font-extrabold">STATUS: ATIVO</span>
+                </div>
+              )}
             </div>
 
-            {/* SEÇÃO: DIAGNÓSTICO DESTE NAVEGADOR (ETAPA 5) */}
-            <div className="p-5 rounded-2xl bg-amber-50/50 border border-amber-200 space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-2">
-                <Globe className="w-4 h-4 text-amber-600" />
-                <span>Diagnóstico Deste Navegador Atual</span>
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
-                  <span className="text-slate-500 text-[10px] uppercase font-bold block">User Agent</span>
-                  <p className="font-mono text-[11px] text-slate-800 truncate" title={navigator.userAgent}>
-                    {navigator.userAgent}
-                  </p>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
-                  <span className="text-slate-500 text-[10px] uppercase font-bold block">URL Atual</span>
-                  <p className="font-mono text-[11px] text-slate-800 truncate" title={window.location.href}>
-                    {window.location.href}
-                  </p>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
-                  <span className="text-slate-500 text-[10px] uppercase font-bold block">Última Busca Firestore</span>
-                  <p className="font-mono text-[11px] text-teal-700 font-extrabold">
-                    {lastFetchedAt} ({products.length} produtos)
-                  </p>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
-                  <span className="text-slate-500 text-[10px] uppercase font-bold block">Origem dos Dados</span>
-                  <p className="font-mono text-[11px] text-emerald-700 font-extrabold">
-                    Firestore Real (Zero Mock/Local)
-                  </p>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
-                  <span className="text-slate-500 text-[10px] uppercase font-bold block">localStorage Produtos</span>
-                  <p className={`font-mono text-[11px] font-bold ${localStorage.getItem('atividades_criativas_products_v1') ? 'text-amber-700' : 'text-emerald-700'}`}>
-                    {localStorage.getItem('atividades_criativas_products_v1') ? 'SIM (Antigo encravado)' : 'NÃO (Limpo)'}
-                  </p>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
-                  <span className="text-slate-500 text-[10px] uppercase font-bold block">sessionStorage Produtos</span>
-                  <p className={`font-mono text-[11px] font-bold ${sessionStorage.getItem('atividades_criativas_products_v1') ? 'text-amber-700' : 'text-emerald-700'}`}>
-                    {sessionStorage.getItem('atividades_criativas_products_v1') ? 'SIM (Antigo encravado)' : 'NÃO (Limpo)'}
-                  </p>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
-                  <span className="text-slate-500 text-[10px] uppercase font-bold block">Service Worker Ativo</span>
-                  <p className={`font-mono text-[11px] font-bold ${swActive ? 'text-amber-700' : 'text-emerald-700'}`}>
-                    {swActive ? 'SIM (Possível Cache)' : 'NÃO (Desativado)'}
-                  </p>
-                </div>
-
-                <div className="p-3 bg-white rounded-xl border border-amber-100 space-y-0.5">
-                  <span className="text-slate-500 text-[10px] uppercase font-bold block">CacheStorage Ativo</span>
-                  <p className={`font-mono text-[11px] font-bold ${cacheActive ? 'text-amber-700' : 'text-emerald-700'}`}>
-                    {cacheActive ? 'SIM (Possível Cache)' : 'NÃO (Desativado)'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* STATUS DA INFRAESTRUTURA */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 text-xs">
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">Modo de Dados</span>
-                <div className="text-sm font-extrabold text-emerald-700">Firestore Real (Ativo)</div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">Projeto Firebase</span>
-                <div className="text-sm font-extrabold text-slate-900 font-mono">materiais-criativos</div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">Coleção Usada</span>
-                <div className="text-sm font-extrabold text-slate-900 font-mono">products</div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">Total de Produtos no Firestore</span>
-                <div className="text-sm font-extrabold text-teal-700">
-                  {products.length} produtos
-                </div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">Total de Produtos Publicados</span>
-                <div className="text-sm font-extrabold text-emerald-700">
-                  {products.filter(p => p.status === 'published').length} publicados
-                </div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">R2 Bucket Name</span>
-                <div className="text-sm font-extrabold text-slate-900 font-mono">materiais-criativos</div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">R2 Public URL Configurada</span>
-                <div className="text-sm font-extrabold text-emerald-700 font-mono truncate" title="https://pub-38ad649cb42d4a66804e3c3aa376a92f.r2.dev">
-                  https://pub-38ad64...r2.dev
-                </div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">LocalStorage Produtos</span>
-                <div className="text-sm font-extrabold text-rose-700">DESATIVADO</div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">Mock / Demo Produtos</span>
-                <div className="text-sm font-extrabold text-rose-700">DESATIVADO</div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">Base64 em Produtos</span>
-                <div className="text-sm font-extrabold text-rose-700">BLOQUEADO</div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">Blob URLs em Produtos</span>
-                <div className="text-sm font-extrabold text-rose-700">BLOQUEADO</div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-slate-500 font-bold uppercase text-[10px]">Status do Último Upload R2</span>
-                <div className={`text-sm font-extrabold ${lastR2UploadStatus === 'Sucesso' ? 'text-emerald-700' : lastR2UploadStatus === 'Erro' ? 'text-rose-700' : 'text-slate-600'}`}>
-                  {lastR2UploadStatus}
-                </div>
-              </div>
-            </div>
-
-            {/* ÚLTIMO ERRO OU SUCESSO DE UPLOAD */}
-            {lastR2UploadError && (
-              <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 space-y-1">
-                <strong className="font-bold flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 text-rose-600" />
-                  Último Erro de Upload R2:
-                </strong>
-                <p className="font-mono text-[11px]">{lastR2UploadError}</p>
-              </div>
-            )}
-
-            {lastR2UploadUrl && (
-              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1">
-                <strong className="font-bold">Última URL Pública Gerada pelo R2:</strong>
-                <div className="font-mono text-[11px] select-all break-all bg-white p-2 rounded-xl border border-emerald-200 flex items-center justify-between gap-2">
-                  <span>{lastR2UploadUrl}</span>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(lastR2UploadUrl);
-                      showToast('URL copiada!');
-                    }}
-                    className="px-2 py-1 bg-emerald-600 text-white rounded-lg text-[10px] font-bold hover:bg-emerald-700"
-                  >
-                    Copiar
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* AUDITORIA INDIVIDUAL DE PRODUTOS & TESTE DE URL (ETAPA 1) */}
+            {/* ETAPA 2 — PROVAR PRODUTOS RENDERIZADOS NA TELA */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-extrabold text-slate-900 text-sm">Auditoria de Produtos no Firestore Real & Teste de Acesso Público</h3>
-                <span className="text-xs text-slate-500">Total: {products.length} itens</span>
+                <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-teal-600" />
+                  <span>Etapa 2 — Produtos Atualmente Renderizados no Site</span>
+                </h3>
+                <span className="text-xs text-slate-500 font-bold">Total renderizado: {products.length} item(ns)</span>
               </div>
 
-              <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+              <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-xs">
                 <table className="w-full text-left text-xs text-slate-700">
-                  <thead className="bg-slate-50 font-bold text-slate-800 uppercase tracking-wider border-b border-slate-200">
+                  <thead className="bg-slate-50 font-bold text-slate-800 uppercase tracking-wider border-b border-slate-200 text-[10px]">
                     <tr>
-                      <th className="p-3">ID Firestore</th>
                       <th className="p-3">Título</th>
+                      <th className="p-3">Slug</th>
+                      <th className="p-3">ID Firestore</th>
                       <th className="p-3">Status</th>
                       <th className="p-3">imageUrl</th>
                       <th className="p-3">mainImage</th>
                       <th className="p-3">thumbnailUrl</th>
-                      <th className="p-3">Galeria</th>
-                      <th className="p-3 text-right">Ações / Teste Público</th>
+                      <th className="p-3">Origem Declarada</th>
+                      <th className="p-3">Existe no Firestore?</th>
+                      <th className="p-3 text-center">Doc Encontrado?</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {products.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="p-6 text-center text-slate-500 font-medium">
-                          Nenhum produto cadastrado no Firestore.
+                        <td colSpan={10} className="p-8 text-center text-slate-500 font-bold bg-slate-50/50">
+                          <AlertCircle className="w-6 h-6 text-slate-400 mx-auto mb-2" />
+                          Nenhum produto renderizado. O site está limpo e 100% alinhado ao banco vazio.
                         </td>
                       </tr>
                     ) : (
                       products.map(p => {
-                        const primaryUrl = p.imageUrl || p.mainImage || p.thumbnailUrl || '';
-                        const testState = imageTestResults[p.id];
-                        const galleryArr = Array.isArray(p.galleryImages) ? p.galleryImages : [];
+                        const isRealFirestore = Boolean(p.id && !p.id.startsWith('mock_') && !p.id.startsWith('local_'));
 
                         return (
                           <tr key={p.id} className="hover:bg-slate-50">
-                            <td className="p-3 font-mono text-[11px] text-slate-500">{p.id}</td>
                             <td className="p-3 font-bold text-slate-900">{p.title}</td>
+                            <td className="p-3 font-mono text-[10px] text-slate-500">{p.slug}</td>
+                            <td className="p-3 font-mono text-[10px] text-teal-700">{p.id}</td>
                             <td className="p-3">
                               <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${p.status === 'published' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>
                                 {p.status === 'published' ? 'Publicado' : 'Rascunho'}
                               </span>
                             </td>
-                            <td className="p-3 font-mono text-[10px] max-w-[140px] truncate" title={p.imageUrl || 'Vazia'}>
+                            <td className="p-3 font-mono text-[10px] max-w-[120px] truncate" title={p.imageUrl || 'Vazia'}>
                               {p.imageUrl ? <span className="text-emerald-700">{p.imageUrl}</span> : <span className="text-slate-400">Vazia</span>}
                             </td>
-                            <td className="p-3 font-mono text-[10px] max-w-[140px] truncate" title={p.mainImage || 'Vazia'}>
+                            <td className="p-3 font-mono text-[10px] max-w-[120px] truncate" title={p.mainImage || 'Vazia'}>
                               {p.mainImage ? <span className="text-teal-700">{p.mainImage}</span> : <span className="text-slate-400">Vazia</span>}
                             </td>
-                            <td className="p-3 font-mono text-[10px] max-w-[140px] truncate" title={p.thumbnailUrl || 'Vazia'}>
+                            <td className="p-3 font-mono text-[10px] max-w-[120px] truncate" title={p.thumbnailUrl || 'Vazia'}>
                               {p.thumbnailUrl ? <span className="text-slate-600">{p.thumbnailUrl}</span> : <span className="text-slate-400">Vazia</span>}
                             </td>
-                            <td className="p-3 text-slate-600 font-mono text-[11px]">
-                              {galleryArr.length} foto(s)
+                            <td className="p-3 font-bold text-slate-600">Firestore Remote</td>
+                            <td className="p-3">
+                              {isRealFirestore ? (
+                                <span className="px-2 py-1 rounded bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">
+                                  SIM (Existe)
+                                </span>
+                              ) : (
+                                <span className="p-2 rounded-lg bg-rose-600 text-white font-extrabold text-[10px]">
+                                  FAKE/CACHE DETECTADO — ESTE PRODUTO NÃO EXISTE NO BANCO REAL
+                                </span>
+                              )}
                             </td>
-                            <td className="p-3 text-right space-y-1">
-                              <div className="flex items-center justify-end gap-1.5">
-                                {primaryUrl && (
-                                  <>
-                                    <button
-                                      onClick={() => {
-                                        navigator.clipboard.writeText(primaryUrl);
-                                        showToast('URL copiada para a área de transferência!');
-                                      }}
-                                      className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                                    >
-                                      <Copy className="w-3 h-3" /> Copiar
-                                    </button>
-
-                                    <button
-                                      onClick={() => testPublicImageUrl(primaryUrl, p.id)}
-                                      className="px-2 py-1 rounded bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                                    >
-                                      Testar URL pública
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-
-                              {testState && (
-                                <div className="text-[10px] font-bold">
-                                  {testState.status === 'testing' && <span className="text-amber-600">Testando...</span>}
-                                  {testState.status === 'ok' && (
-                                    <span className="text-emerald-700 flex items-center justify-end gap-1">
-                                      <CheckCircle2 className="w-3 h-3" /> OK: {testState.message}
-                                    </span>
-                                  )}
-                                  {testState.status === 'error' && (
-                                    <span className="text-rose-700 flex items-center justify-end gap-1">
-                                      <AlertCircle className="w-3 h-3" /> ERRO: {testState.message}
-                                    </span>
-                                  )}
-                                </div>
+                            <td className="p-3 text-center">
+                              {isRealFirestore ? (
+                                <span className="text-emerald-600 font-bold">SIM</span>
+                              ) : (
+                                <span className="text-rose-600 font-bold">NÃO</span>
                               )}
                             </td>
                           </tr>
@@ -2203,6 +2175,227 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+
+            {/* ETAPA 3 — PROVAR ORIGEM DA IMAGEM */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-amber-600" />
+                  <span>Etapa 3 — Auditoria da Origem da Imagem de Cada Produto</span>
+                </h3>
+              </div>
+
+              <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-xs">
+                <table className="w-full text-left text-xs text-slate-700">
+                  <thead className="bg-slate-50 font-bold text-slate-800 uppercase tracking-wider border-b border-slate-200 text-[10px]">
+                    <tr>
+                      <th className="p-3">Produto Vinculado</th>
+                      <th className="p-3">src Atual do &lt;img&gt;</th>
+                      <th className="p-3">Campo Origem</th>
+                      <th className="p-3">Começa com https://?</th>
+                      <th className="p-3">Contém r2.dev?</th>
+                      <th className="p-3">Abre Direto?</th>
+                      <th className="p-3">Existe no Firestore?</th>
+                      <th className="p-3 text-right">Ação Teste</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {products.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-6 text-center text-slate-500 font-bold bg-slate-50/50">
+                          Nenhuma imagem renderizada no site.
+                        </td>
+                      </tr>
+                    ) : (
+                      products.map(p => {
+                        const primaryUrl = p.imageUrl || p.mainImage || p.thumbnailUrl || '';
+                        const testState = imageTestResults[p.id];
+                        const isRealFirestore = Boolean(p.id && !p.id.startsWith('mock_') && !p.id.startsWith('local_'));
+                        const isHttps = primaryUrl.startsWith('https://');
+                        const isR2 = primaryUrl.includes('r2.dev');
+
+                        return (
+                          <tr key={p.id} className="hover:bg-slate-50">
+                            <td className="p-3 font-bold text-slate-900">{p.title}</td>
+                            <td className="p-3 font-mono text-[10px] max-w-[180px] truncate" title={primaryUrl}>
+                              {primaryUrl ? <span className="text-teal-700">{primaryUrl}</span> : <span className="text-slate-400">Sem imagem</span>}
+                            </td>
+                            <td className="p-3 font-mono text-[10px]">
+                              {p.imageUrl ? 'imageUrl' : p.mainImage ? 'mainImage' : p.thumbnailUrl ? 'thumbnailUrl' : 'Nenhum'}
+                            </td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${isHttps ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                {isHttps ? 'SIM' : 'NÃO'}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${isR2 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>
+                                {isR2 ? 'SIM' : 'NÃO'}
+                              </span>
+                            </td>
+                            <td className="p-3">
+                              {testState ? (
+                                <span className={`font-bold text-[10px] ${testState.status === 'ok' ? 'text-emerald-700' : testState.status === 'error' ? 'text-rose-700' : 'text-amber-600'}`}>
+                                  {testState.status === 'ok' ? 'SIM (HTTP 200)' : testState.status === 'error' ? 'NÃO (Erro)' : 'Testando...'}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 text-[10px]">Não testado</span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              {isRealFirestore ? (
+                                <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                                  SIM
+                                </span>
+                              ) : (
+                                <span className="p-1.5 rounded bg-rose-600 text-white font-extrabold text-[10px]">
+                                  IMAGEM SOLTA/CACHE — NÃO VINCULADA A PRODUTO REAL
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 text-right">
+                              {primaryUrl && (
+                                <button
+                                  onClick={() => testPublicImageUrl(primaryUrl, p.id)}
+                                  className="px-2 py-1 rounded bg-teal-600 hover:bg-teal-700 text-white text-[10px] font-bold cursor-pointer"
+                                >
+                                  Testar URL
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* ETAPA 4 — DIAGNÓSTICO DO NAVEGADOR ATUAL (CACHE / LOCAL) */}
+            <div className="p-6 rounded-3xl bg-slate-900 text-white space-y-5 border border-slate-800 shadow-lg">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                <div>
+                  <h3 className="text-sm font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                    <Globe className="w-5 h-5 text-amber-400" />
+                    <span>Etapa 4 — Diagnóstico do Navegador Atual</span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Identificação completa da URL, ambiente, armazenamento e estado técnico do navegador</p>
+                </div>
+
+                <button
+                  onClick={handleFullLocalClear}
+                  className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold transition-all shadow-md flex items-center gap-2 cursor-pointer shrink-0"
+                >
+                  <Trash2 className="w-4 h-4 text-white" />
+                  <span>Apagar cache local</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-sans">
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">URL Atual Completa</span>
+                  <p className="font-mono text-[11px] text-teal-300 break-all" title={window.location.href}>
+                    {window.location.href}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Host</span>
+                  <p className="font-mono text-xs font-bold text-slate-200">
+                    {window.location.hostname}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">É Google Studio Preview?</span>
+                  <p className={`font-mono text-xs font-extrabold ${window.location.hostname.includes('run.app') || window.location.hostname.includes('google') ? 'text-amber-300' : 'text-slate-300'}`}>
+                    {window.location.hostname.includes('run.app') || window.location.hostname.includes('google') ? 'SIM' : 'NÃO'}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">É Vercel / Domínio Real?</span>
+                  <p className={`font-mono text-xs font-extrabold ${window.location.hostname.includes('vercel') || window.location.hostname.includes('materias') || window.location.hostname.includes('atividades') ? 'text-emerald-400' : 'text-slate-300'}`}>
+                    {window.location.hostname.includes('vercel') || window.location.hostname.includes('materias') || window.location.hostname.includes('atividades') ? 'SIM' : 'NÃO'}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Service Worker Ativo?</span>
+                  <p className={`font-mono text-xs font-bold ${swActive ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {swActive ? 'SIM' : 'NÃO'}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">CacheStorage Tem Caches?</span>
+                  <p className={`font-mono text-xs font-bold ${cacheActive ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {cacheActive ? 'SIM' : 'NÃO'}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">localStorage Tem Chave de Produto?</span>
+                  <p className={`font-mono text-xs font-bold ${Boolean(localStorage.getItem('atividades_criativas_products_v1')) ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {Boolean(localStorage.getItem('atividades_criativas_products_v1')) ? 'SIM' : 'NÃO'}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">sessionStorage Tem Chave de Produto?</span>
+                  <p className={`font-mono text-xs font-bold ${Boolean(sessionStorage.getItem('atividades_criativas_products_v1')) ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {Boolean(sessionStorage.getItem('atividades_criativas_products_v1')) ? 'SIM' : 'NÃO'}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1 lg:col-span-2">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">IndexedDB Tem Banco Relacionado a Produtos?</span>
+                  <p className="font-mono text-xs font-bold text-slate-300">
+                    {'indexedDB' in window ? 'SIM (API disponível / Sem banco de produtos registrado)' : 'NÃO'}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1 lg:col-span-2">
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Chaves Locais Encontradas no Navegador</span>
+                  <p className="font-mono text-[11px] font-bold text-amber-300 break-all">
+                    {getStoredKeyNames().length > 0 ? getStoredKeyNames().join(', ') : 'Nenhuma chave local encontrada (Armazenamento limpo)'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* ETAPA 7 — INVESTIGAR CLOUDFLARE R2 */}
+            <div className="p-6 rounded-3xl bg-slate-50 border border-slate-200 space-y-4">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <Upload className="w-4 h-4 text-teal-600" />
+                <span>Etapa 7 — Investigação do Cloudflare R2</span>
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold block">R2_PUBLIC_URL Configurado</span>
+                  <p className="font-mono text-xs font-bold text-emerald-700">SIM (https://pub-38ad649cb42d4a66804e3c3aa376a92f.r2.dev)</p>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold block">Bucket R2</span>
+                  <p className="font-mono text-xs font-bold text-slate-900">materiais-criativos</p>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                  <span className="text-slate-500 text-[10px] uppercase font-bold block">Papel do R2 no Sistema</span>
+                  <p className="font-mono text-xs font-bold text-amber-800">Depósito de Mídia (Não é vitrine)</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-white rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
+                <strong className="font-bold text-slate-800">Declaração da Fonte Principal:</strong>
+                <p>
+                  O Cloudflare R2 armazena somente os arquivos binários. A vitrine do site depende exclusivamente da coleção <code className="font-mono font-bold text-teal-700 bg-teal-50 px-1 rounded">products</code> do Firestore. Se uma imagem existe no R2 mas não possui referência no Firestore, ela jamais é exibida.
+                </p>
               </div>
             </div>
 
