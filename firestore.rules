@@ -1,34 +1,42 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true && 
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "admin";
+    }
     
     // Regras da coleção de produtos / materiais
     match /products/{productId} {
-      // Leitura pública permitida para produtos publicados, ou qualquer leitura para admin autenticado
-      allow read: if resource == null || resource.data.status == "published" || request.auth != null;
-      
-      // Escrita (criar, editar, deletar) restrita a administradores ativos
-      allow write: if request.auth != null &&
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "admin" &&
-        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true;
+      // Visitante pode ler apenas produtos com status published. Admin pode ler todos.
+      allow read: if resource.data.status == "published" || isAdmin();
+      // Somente admin pode criar, editar ou apagar produtos
+      allow create, update, delete: if isAdmin();
     }
 
     // Regras da coleção de eventos de analytics
     match /analyticsEvents/{eventId} {
+      // Visitante pode criar eventos de analytics
       allow create: if true;
-      allow read, update, delete: if request.auth != null &&
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "admin" &&
-        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true;
+      // Somente admin pode ler ou apagar
+      allow read, delete: if isAdmin();
+      allow update: if false;
     }
 
     // Regras da coleção de administradores
     match /admins/{userId} {
-      // Usuário autenticado só pode ler seu próprio documento de verificação
-      allow read: if request.auth != null && request.auth.uid == userId;
-      // Nenhuma alteração via cliente público nas permissões de admin
+      // Usuário autenticado pode ler somente seu próprio documento admins/{uid}
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      // Ninguém pode escrever pelo frontend
       allow write: if false;
     }
   }
 }
+

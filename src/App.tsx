@@ -9,38 +9,62 @@ import { BioPage } from './pages/BioPage';
 import { MaterialsPage } from './pages/MaterialsPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
 import { AdminPage } from './pages/AdminPage';
+import { ProofRealPage } from './pages/ProofRealPage';
+import { CheckConexaoPage } from './pages/CheckConexaoPage';
+import { ProofZeroPage, QUARANTINE_MODE } from './pages/ProofZeroPage';
+import { VersionPage } from './pages/VersionPage';
+
+function getNormalizedPath(): string {
+  if (typeof window === 'undefined') return '/';
+  const hash = window.location.hash;
+  if (hash) {
+    const cleaned = hash.replace(/^#\/?/, '/');
+    return cleaned.endsWith('/') && cleaned.length > 1 ? cleaned.slice(0, -1) : cleaned;
+  }
+  const pathname = window.location.pathname;
+  return pathname.endsWith('/') && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
+}
 
 export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [currentPath, setCurrentPath] = useState<string>(() => {
-    return window.location.hash ? window.location.hash.slice(1) : window.location.pathname;
-  });
+  const [productsLoaded, setProductsLoaded] = useState<boolean>(false);
+  const [productsSource, setProductsSource] = useState<'loading' | 'firestore'>('loading');
+  const [fakeBlockedCount, setFakeBlockedCount] = useState<number>(0);
+  const [currentPath, setCurrentPath] = useState<string>(getNormalizedPath);
 
   const refreshProducts = async () => {
+    setProducts([]);
+    setProductsLoaded(false);
+    setProductsSource('loading');
+
     const list = await fetchProductsAsync();
-    setProducts(list);
+    const safeProducts = list.filter(p => p._source === 'firestore' && p._firestoreId);
+    const blocked = list.length - safeProducts.length;
+
+    setProducts(safeProducts);
+    setFakeBlockedCount(blocked);
+    setProductsLoaded(true);
+    setProductsSource('firestore');
   };
 
   useEffect(() => {
     refreshProducts();
   }, []);
 
-
   useEffect(() => {
     trackPageView(currentPath || '/');
   }, [currentPath]);
 
   useEffect(() => {
-    const handlePopState = () => {
-      const path = window.location.hash ? window.location.hash.slice(1) : window.location.pathname;
-      setCurrentPath(path || '/');
+    const handleLocationChange = () => {
+      setCurrentPath(getNormalizedPath());
     };
 
-    window.addEventListener('popstate', handlePopState);
-    window.addEventListener('hashchange', handlePopState);
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
     return () => {
-      window.removeEventListener('popstate', handlePopState);
-      window.removeEventListener('hashchange', handlePopState);
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
     };
   }, []);
 
@@ -55,7 +79,24 @@ export default function App() {
     navigateTo(`/atividade/${cleanSlug}`);
   };
 
-  // Route Resolver
+  // ISOLATED ROUTES FOR TECHNICAL PROOF & CONNECTION AUDIT
+  if (currentPath === '/versao' || currentPath.startsWith('/versao')) {
+    return <VersionPage />;
+  }
+
+  if (currentPath === '/prova-zero' || currentPath.startsWith('/prova-zero')) {
+    return <ProofZeroPage />;
+  }
+
+  if (currentPath === '/check-conexao' || currentPath.startsWith('/check-conexao')) {
+    return <CheckConexaoPage />;
+  }
+
+  if (currentPath === '/prova-real' || currentPath.startsWith('/prova-real')) {
+    return <ProofRealPage />;
+  }
+
+  // Route Resolver for public app
   const resolveRoute = () => {
     const rawPath = currentPath || '/';
 
@@ -125,13 +166,26 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col font-sans bg-slate-50 text-slate-900 antialiased selection:bg-teal-100 selection:text-teal-900">
+      {fakeBlockedCount > 0 && (
+        <div className="bg-rose-600 text-white px-4 py-2.5 text-xs font-mono font-bold text-center">
+          ERRO GRAVE: {fakeBlockedCount} PRODUTO(S) FAKE BLOQUEADO(S). FIRESTORE REAL = {products.length}.
+        </div>
+      )}
+
       <HeaderNav currentPath={currentPath} onNavigate={navigateTo} />
       
       <main className="flex-1">
-        {resolveRoute()}
+        {!productsLoaded ? (
+          <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center space-y-3">
+            <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-semibold text-slate-700">Carregando materiais reais...</p>
+          </div>
+        ) : (
+          resolveRoute()
+        )}
       </main>
 
-      <Footer onNavigate={navigateTo} />
+      <Footer onNavigate={navigateTo} productsCount={products.length} />
     </div>
   );
 }

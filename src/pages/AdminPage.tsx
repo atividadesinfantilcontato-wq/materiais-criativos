@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product } from '../types';
-import { saveProductAsync, deleteProductAsync, fetchProductsAsync } from '../services/productFirestore';
+import { saveProductAsync, deleteProductAsync, fetchProductsAsync, purgeAllProductsAsync } from '../services/productFirestore';
 import { generateSlug } from '../utils/slug';
 import { uploadToR2 } from '../services/r2Upload';
 import { auth, db, isFirebaseConfigured } from '../services/firebase';
@@ -421,6 +421,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
     showToast('Produtos recarregados do Firestore.');
   };
 
+  const handlePurgeAll = async () => {
+    if (confirm('ATENÇÃO: Tem certeza que deseja apagar TODOS os produtos do Firestore real para recadastrar tudo do zero?')) {
+      try {
+        const res = await purgeAllProductsAsync();
+        await onProductsUpdated();
+        showToast(`Base zerada com sucesso! ${res.deletedIds.length} produto(s) removido(s).`);
+      } catch (err: any) {
+        showToast('Erro ao zerar base no Firestore: ' + (err.message || 'Falha'));
+      }
+    }
+  };
+
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const title = e.target.value;
     setEditingProduct(prev => {
@@ -544,8 +556,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
       return;
     }
 
+    const prodId = editingProduct.id || `prod-${Date.now()}`;
     const fullProduct: Product = {
-      id: editingProduct.id || `prod-${Date.now()}`,
+      id: prodId,
+      _firestoreId: prodId,
+      _source: 'firestore',
       title: editingProduct.title,
       slug: editingProduct.slug || generateSlug(editingProduct.title),
       shortSummary: editingProduct.shortSummary || '',
@@ -683,6 +698,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
         )}
 
         {/* Top Header Bar */}
+        {products.some(p => p._source !== 'firestore') && (
+          <div className="p-4 rounded-2xl bg-rose-600 text-white font-mono font-bold text-xs flex items-center justify-between shadow-lg">
+            <span>STATUS = ADMIN LENDO FAKE! Foram detectados {products.filter(p => p._source !== 'firestore').length} produtos fora do Firestore real.</span>
+          </div>
+        )}
+
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-2xl bg-teal-50 text-teal-700 border border-teal-200">
@@ -819,11 +840,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                 <h2 className="text-base font-extrabold text-slate-900">Catálogo de Materiais ({products.length})</h2>
                 <div className="flex gap-2">
                   <button
+                    onClick={handlePurgeAll}
+                    className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors flex items-center gap-1.5"
+                    title="Apagar todos os materiais do Firestore"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Zerar Base (Limpar Tudo)
+                  </button>
+
+                  <button
                     onClick={handleResetDefaults}
                     className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors flex items-center gap-1.5"
-                    title="Restaurar de fábrica"
+                    title="Recarregar dados do Firestore"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" /> Restaurar Originais
+                    <RotateCcw className="w-3.5 h-3.5" /> Recarregar
                   </button>
 
                   <button
@@ -2339,15 +2368,15 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
 
                 <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
                   <span className="text-slate-400 text-[10px] uppercase font-bold block">localStorage Tem Chave de Produto?</span>
-                  <p className={`font-mono text-xs font-bold ${Boolean(localStorage.getItem('atividades_criativas_products_v1')) ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {Boolean(localStorage.getItem('atividades_criativas_products_v1')) ? 'SIM' : 'NÃO'}
+                  <p className={`font-mono text-xs font-bold ${Object.keys(localStorage).some(k => k.includes('product')) ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {Object.keys(localStorage).some(k => k.includes('product')) ? 'SIM' : 'NÃO'}
                   </p>
                 </div>
 
                 <div className="p-3 bg-slate-800/90 rounded-xl border border-slate-700/80 space-y-1">
                   <span className="text-slate-400 text-[10px] uppercase font-bold block">sessionStorage Tem Chave de Produto?</span>
-                  <p className={`font-mono text-xs font-bold ${Boolean(sessionStorage.getItem('atividades_criativas_products_v1')) ? 'text-rose-400' : 'text-emerald-400'}`}>
-                    {Boolean(sessionStorage.getItem('atividades_criativas_products_v1')) ? 'SIM' : 'NÃO'}
+                  <p className={`font-mono text-xs font-bold ${Object.keys(sessionStorage).some(k => k.includes('product')) ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {Object.keys(sessionStorage).some(k => k.includes('product')) ? 'SIM' : 'NÃO'}
                   </p>
                 </div>
 

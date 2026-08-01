@@ -13,12 +13,12 @@ interface BioPageProps {
 export const BioPage: React.FC<BioPageProps> = ({ products, onNavigate, onSelectProduct }) => {
   const [showHowItWorksModal, setShowHowItWorksModal] = useState(false);
 
-  // Filter published products
-  const publishedProducts = products.filter(p => p.status !== 'draft');
-  const featuredProducts = publishedProducts.filter(p => p.socialFeatured || p.featured);
+  // Filter published products strictly originating from Firestore
+  const publishedProducts = products.filter(p => p._source === 'firestore' && p.status !== 'draft');
+  const highlightedProducts = publishedProducts.filter(p => p.socialFeatured || p.featured);
   
   // Sort by display order
-  const displayProducts = (featuredProducts.length > 0 ? featuredProducts : publishedProducts)
+  const displayProducts = (highlightedProducts.length > 0 ? highlightedProducts : publishedProducts)
     .sort((a, b) => (a.displayOrder || 99) - (b.displayOrder || 99))
     .slice(0, 6);
 

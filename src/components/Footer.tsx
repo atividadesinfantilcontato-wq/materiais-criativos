@@ -1,11 +1,13 @@
 import React from 'react';
 import { BookOpen, ShieldCheck, Heart, FileText, Lock } from 'lucide-react';
+import { APP_BUILD_ID } from '../types';
 
 interface FooterProps {
   onNavigate: (path: string) => void;
+  productsCount?: number;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
+export const Footer: React.FC<FooterProps> = ({ onNavigate, productsCount = 0 }) => {
   return (
     <footer className="bg-slate-900 text-slate-300 pt-12 pb-8 border-t border-slate-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

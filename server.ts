@@ -5,6 +5,9 @@ import multer from 'multer';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { createServer as createViteServer } from 'vite';
 import trackEventHandler from './api/track-event';
+import checkR2Handler from './api/check-r2';
+import purgeR2Handler from './api/purge-r2';
+import listR2Handler from './api/list-r2';
 
 dotenv.config();
 
@@ -83,6 +86,15 @@ app.post('/api/upload-r2', upload.single('file'), async (req, res) => {
 
 // API Route: Track Event (Vercel Geolocation + Firestore)
 app.post('/api/track-event', trackEventHandler);
+
+// API Route: Check R2 Connection
+app.all('/api/check-r2', checkR2Handler);
+
+// API Route: Purge R2 Objects
+app.all('/api/purge-r2', purgeR2Handler);
+
+// API Route: List R2 Objects
+app.all('/api/list-r2', listR2Handler);
 
 // API Route: Healthcheck
 app.get('/api/health', (req, res) => {

@@ -9,19 +9,72 @@ interface ProductCardProps {
   onSelectProduct: (slug: string) => void;
 }
 
+declare global {
+  interface Window {
+    __MC_RENDERED_PRODUCTS__?: any[];
+  }
+}
+
 export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelectProduct }) => {
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (!window.__MC_RENDERED_PRODUCTS__) {
+        window.__MC_RENDERED_PRODUCTS__ = [];
+      }
+      window.__MC_RENDERED_PRODUCTS__.push({
+        title: product.title,
+        id: product.id,
+        slug: product.slug,
+        imageUrl: product.imageUrl,
+        mainImage: product.mainImage,
+        thumbnailUrl: product.thumbnailUrl,
+        _source: product._source,
+        _firestoreId: product._firestoreId || product.id,
+        componentName: 'ProductCard',
+        route: typeof window !== 'undefined' ? (window.location.hash || window.location.pathname) : '',
+        existsInFirestore: product._source === 'firestore',
+        originDetected: product._source || 'unknown',
+      });
+    }
+  }, [product]);
+
+  // Candidate images list to fallback if main image URL returns 404 or fails
+  const candidateImages = [
+    product.imageUrl,
+    product.mainImage,
+    product.thumbnailUrl,
+    ...(product.galleryImages || [])
+  ].filter((url, idx, arr): url is string => Boolean(url && url.startsWith('https://')) && arr.indexOf(url) === idx);
+
+  if (
+    product._source !== 'firestore' ||
+    !product._firestoreId ||
+    product.status !== 'published' ||
+    candidateImages.length === 0
+  ) {
+    return null;
+  }
+
+  const [candidateIndex, setCandidateIndex] = useState(0);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [hasError, setHasError] = useState(false);
-  const imageSrc = (product.imageUrl && product.imageUrl.trim() !== '')
-    ? product.imageUrl
-    : ((product.thumbnailUrl && product.thumbnailUrl.trim() !== '') 
-      ? product.thumbnailUrl 
-      : ((product.mainImage && product.mainImage.trim() !== '') ? product.mainImage : null));
+  
+  const imageSrc = candidateImages[candidateIndex] || '';
 
   useEffect(() => {
     setImageLoaded(false);
     setHasError(false);
-  }, [imageSrc]);
+    setCandidateIndex(0);
+  }, [product.id]);
+
+  const handleImgError = () => {
+    if (candidateIndex < candidateImages.length - 1) {
+      setCandidateIndex(prev => prev + 1);
+      setImageLoaded(false);
+    } else {
+      setHasError(true);
+    }
+  };
 
   const handleClick = (e?: React.MouseEvent) => {
     if (e) {
@@ -38,6 +91,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelectProdu
   return (
     <div 
       onClick={handleClick}
+      data-product-card="true"
+      data-product-id={product.id}
+      data-firestore-id={product._firestoreId || product.id}
+      data-source={product._source}
+      data-title={product.title}
+      data-image-url={imageSrc}
       className="group bg-white rounded-2xl border border-slate-200/80 shadow-xs hover:shadow-xl hover:border-[#6BCB9A]/50 transition-all duration-300 flex flex-col h-full overflow-hidden cursor-pointer"
     >
       {/* Product Image Container */}
@@ -51,8 +110,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelectProdu
           <img
             src={imageSrc}
             alt={product.title}
+            referrerPolicy="no-referrer"
             onLoad={() => setImageLoaded(true)}
-            onError={() => setHasError(true)}
+            onError={handleImgError}
             className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-500 ${
               imageLoaded ? 'opacity-100' : 'opacity-0'
             }`}

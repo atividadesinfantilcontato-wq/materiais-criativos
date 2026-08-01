@@ -25,22 +25,55 @@ interface ProductDetailPageProps {
 }
 
 export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, onNavigate }) => {
-  const mainImgUrl = product.imageUrl || product.mainImage || product.thumbnailUrl || '';
-  const [selectedImage, setSelectedImage] = useState<string>(mainImgUrl);
+  if (product._source !== 'firestore') {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center space-y-4">
+        <h2 className="text-2xl font-bold text-rose-700">Material bloqueado</h2>
+        <p className="text-slate-600 max-w-md">Este produto não veio do Firestore real de produção.</p>
+        <button
+          onClick={() => onNavigate('/materiais')}
+          className="px-6 py-2.5 rounded-xl bg-[#6BCB9A] hover:bg-[#55B987] text-white font-semibold text-sm transition-colors cursor-pointer shadow-xs"
+        >
+          Voltar para materiais
+        </button>
+      </div>
+    );
+  }
+
+  const candidateImages = [
+    product.imageUrl,
+    product.mainImage,
+    product.thumbnailUrl,
+    ...(product.galleryImages || [])
+  ].filter((url, idx, arr): url is string => Boolean(url && url.startsWith('https://')) && arr.indexOf(url) === idx);
+
+  const [selectedImage, setSelectedImage] = useState<string>(candidateImages[0] || '');
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const [imageError, setImageError] = useState<boolean>(false);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (product) {
-      setSelectedImage(product.imageUrl || product.mainImage || product.thumbnailUrl || '');
+      setFailedImages(new Set());
       setImageError(false);
+      setSelectedImage(candidateImages[0] || '');
       trackProductView(product);
     }
-  }, [product?.id, product?.imageUrl, product?.mainImage, product?.thumbnailUrl]);
+  }, [product?.id]);
 
-  useEffect(() => {
-    setImageError(false);
-  }, [selectedImage]);
+  const handleMainImgError = () => {
+    setFailedImages(prev => {
+      const next = new Set(prev);
+      if (selectedImage) next.add(selectedImage);
+      const nextWorking = candidateImages.find(img => !next.has(img));
+      if (nextWorking) {
+        setSelectedImage(nextWorking);
+      } else {
+        setImageError(true);
+      }
+      return next;
+    });
+  };
 
   const youtubeEmbedId = extractYoutubeEmbedId(product.youtubeUrl);
 
@@ -99,11 +132,12 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
             {/* Main Image View */}
             <div className="lg:col-span-6 space-y-4">
               <div className="aspect-4/3 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shadow-inner relative flex items-center justify-center text-slate-400">
-                {(selectedImage || product.imageUrl || product.mainImage) && !imageError ? (
+                {selectedImage && !imageError ? (
                   <img
-                    src={selectedImage || product.imageUrl || product.mainImage}
+                    src={selectedImage}
                     alt={product.title}
-                    onError={() => setImageError(true)}
+                    referrerPolicy="no-referrer"
+                    onError={handleMainImgError}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -115,17 +149,28 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
               </div>
 
               {/* Gallery Thumbnails */}
-              {product.galleryImages && product.galleryImages.filter(img => Boolean(img && img.trim() !== '')).length > 1 && (
+              {candidateImages.filter(img => !failedImages.has(img)).length > 1 && (
                 <div className="flex items-center gap-3 overflow-x-auto pb-2">
-                  {product.galleryImages.filter(img => Boolean(img && img.trim() !== '')).map((img, idx) => (
+                  {candidateImages.filter(img => !failedImages.has(img)).map((img, idx) => (
                     <button
                       key={idx}
-                      onClick={() => setSelectedImage(img)}
+                      onClick={() => {
+                        setSelectedImage(img);
+                        setImageError(false);
+                      }}
                       className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${
                         selectedImage === img ? 'border-teal-600 scale-105' : 'border-slate-200 opacity-70 hover:opacity-100'
                       }`}
                     >
-                      <img src={img} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
+                      <img 
+                        src={img} 
+                        alt={`Preview ${idx + 1}`} 
+                        referrerPolicy="no-referrer"
+                        onError={() => {
+                          setFailedImages(prev => new Set(prev).add(img));
+                        }}
+                        className="w-full h-full object-cover" 
+                      />
                     </button>
                   ))}
                 </div>
