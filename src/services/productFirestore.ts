@@ -112,7 +112,7 @@ export async function fetchProductsAsync(): Promise<Product[]> {
       products.push(docToProduct(docSnap.id, docSnap.data()));
     });
 
-    return products.sort((a, b) => (a.displayOrder || 99) - (b.displayOrder || 99));
+    return products.sort((a, b) => (a.displayOrder || 999) - (b.displayOrder || 999) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   } catch (err) {
     return [];
   }
@@ -131,7 +131,7 @@ export async function fetchPublishedProductsAsync(): Promise<Product[]> {
     snapshot.forEach(docSnap => {
       products.push(docToProduct(docSnap.id, docSnap.data()));
     });
-    return products.sort((a, b) => (a.displayOrder || 99) - (b.displayOrder || 99));
+    return products.sort((a, b) => (a.displayOrder || 999) - (b.displayOrder || 999) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   } catch (err) {
     return [];
   }

@@ -17,7 +17,8 @@ import {
   Image as ImageIcon, Sparkles, Check, LogOut, Lock, 
   ShieldCheck, Settings, Home, FileText, Upload, 
   AlertCircle, Key, Mail, RefreshCw, Eye,
-  BarChart2, Share2, Copy, TrendingUp, Users, MousePointer, Smartphone, Globe, Link as LinkIcon, CheckCircle2, MapPin, Navigation, Building2
+  BarChart2, Share2, Copy, TrendingUp, Users, MousePointer, Smartphone, Globe, Link as LinkIcon, CheckCircle2, MapPin, Navigation, Building2,
+  ArrowUp, ArrowDown, ListOrdered
 } from 'lucide-react';
 import { fetchAnalyticsEventsAsync, AnalyticsEventRecord } from '../services/analyticsService';
 
@@ -360,6 +361,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
 
   // Handle Start Creating New Product
   const handleStartCreate = () => {
+    const maxOrder = products && products.length > 0 
+      ? Math.max(...products.map(p => Number(p.displayOrder) || 0)) 
+      : 0;
+
     setEditingProduct({
       id: `prod-${Date.now()}`,
       title: '',
@@ -381,9 +386,87 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
       featured: false,
       socialFeatured: false,
       status: 'published',
-      displayOrder: products && products.length > 0 ? products.length + 1 : 1
+      displayOrder: maxOrder + 1
     });
     setIsNew(true);
+  };
+
+  // --- ORDENAÇÃO DE PRODUTOS ---
+
+  // Swap position of product at index1 and index2 in the sorted products list
+  const handleSwapOrder = async (index1: number, index2: number, sortedList: Product[]) => {
+    if (index1 < 0 || index2 < 0 || index1 >= sortedList.length || index2 >= sortedList.length) return;
+
+    const prod1 = sortedList[index1];
+    const prod2 = sortedList[index2];
+
+    const order1 = Number(prod1.displayOrder) || (index1 + 1);
+    const order2 = Number(prod2.displayOrder) || (index2 + 1);
+
+    // Swap order numbers. If they are identical, assign distinct positions based on indices
+    const newOrder1 = order1 === order2 ? index2 + 1 : order2;
+    const newOrder2 = order1 === order2 ? index1 + 1 : order1;
+
+    try {
+      showToast('Salvando nova ordem...');
+      await Promise.all([
+        saveProductAsync({ ...prod1, displayOrder: newOrder1 }),
+        saveProductAsync({ ...prod2, displayOrder: newOrder2 })
+      ]);
+      await onProductsUpdated();
+      showToast('Ordem atualizada com sucesso!');
+    } catch (err: any) {
+      showToast('Erro ao atualizar ordem: ' + (err.message || 'Falha'));
+    }
+  };
+
+  // Direct numeric order change
+  const handleUpdateSingleOrder = async (product: Product, newOrderValue: number) => {
+    if (isNaN(newOrderValue) || newOrderValue < 1) return;
+    if (product.displayOrder === newOrderValue) return;
+
+    try {
+      showToast(`Atualizando ordem de "${product.title}" para ${newOrderValue}...`);
+      await saveProductAsync({ ...product, displayOrder: newOrderValue });
+      await onProductsUpdated();
+      showToast('Ordem salva com sucesso!');
+    } catch (err: any) {
+      showToast('Erro ao alterar ordem: ' + (err.message || 'Falha'));
+    }
+  };
+
+  // Reorganize / Normalize all product orders (1, 2, 3, 4...)
+  const handleReorganizeOrders = async () => {
+    const sortedList = [...products].sort((a, b) => (Number(a.displayOrder) || 999) - (Number(b.displayOrder) || 999));
+    if (sortedList.length === 0) {
+      showToast('Nenhum produto para reorganizar.');
+      return;
+    }
+
+    if (!confirm(`Deseja reorganizar a numeração da ordem de 1 até ${sortedList.length}?`)) return;
+
+    try {
+      showToast('Reorganizando ordem dos produtos...');
+      const updatePromises: Promise<Product>[] = [];
+
+      sortedList.forEach((prod, idx) => {
+        const expectedOrder = idx + 1;
+        if (prod.displayOrder !== expectedOrder) {
+          updatePromises.push(saveProductAsync({ ...prod, displayOrder: expectedOrder }));
+        }
+      });
+
+      if (updatePromises.length === 0) {
+        showToast('A ordem já está sequencial!');
+        return;
+      }
+
+      await Promise.all(updatePromises);
+      await onProductsUpdated();
+      showToast(`Ordem reorganizada com sucesso (${sortedList.length} materiais)!`);
+    } catch (err: any) {
+      showToast('Erro ao reorganizar ordem: ' + (err.message || 'Falha'));
+    }
   };
 
   const handleStartEdit = (p: Product) => {
@@ -557,6 +640,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
     }
 
     const prodId = editingProduct.id || `prod-${Date.now()}`;
+    const maxOrder = products && products.length > 0 
+      ? Math.max(...products.map(p => Number(p.displayOrder) || 0)) 
+      : 0;
+    const orderVal = editingProduct.displayOrder !== undefined && editingProduct.displayOrder !== null && !isNaN(Number(editingProduct.displayOrder)) && Number(editingProduct.displayOrder) > 0
+      ? Number(editingProduct.displayOrder)
+      : (maxOrder + 1);
+
     const fullProduct: Product = {
       id: prodId,
       _firestoreId: prodId,
@@ -581,7 +671,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
       featured: Boolean(editingProduct.featured),
       socialFeatured: Boolean(editingProduct.socialFeatured),
       status: editingProduct.status || 'published',
-      displayOrder: Number(editingProduct.displayOrder) || (products.length + 1),
+      displayOrder: orderVal,
       createdAt: editingProduct.createdAt || new Date().toISOString()
     };
 
@@ -831,14 +921,24 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
         )}
 
         {/* TAB 2: MATERIAIS */}
-        {activeTab === 'materiais' && (
-          <div className="space-y-6">
+        {activeTab === 'materiais' && (() => {
+          const sortedProducts = [...products].sort((a, b) => (Number(a.displayOrder) || 999) - (Number(b.displayOrder) || 999) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          return (
+            <div className="space-y-6">
             
             {/* Action Bar */}
             {!editingProduct && (
               <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200">
                 <h2 className="text-base font-extrabold text-slate-900">Catálogo de Materiais ({products.length})</h2>
                 <div className="flex gap-2">
+                  <button
+                    onClick={handleReorganizeOrders}
+                    className="px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 text-xs font-bold transition-colors flex items-center gap-1.5"
+                    title="Corrigir numeração da ordem sem buracos (1, 2, 3...)"
+                  >
+                    <ListOrdered className="w-3.5 h-3.5" /> Reorganizar Ordem
+                  </button>
+
                   <button
                     onClick={handlePurgeAll}
                     className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors flex items-center gap-1.5"
@@ -1237,7 +1337,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {products.map((p) => (
+                      {sortedProducts.map((p, index) => (
                         <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
                           <td className="p-4">
                             <div className="flex items-center gap-3">
@@ -1262,7 +1362,55 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                               {p.status === 'draft' ? 'Rascunho' : 'Publicado'}
                             </span>
                           </td>
-                          <td className="p-4 font-mono font-bold text-slate-600">{p.displayOrder || '-'}</td>
+                          <td className="p-4 font-mono font-bold text-slate-600">
+                            <div className="flex items-center gap-2">
+                              {/* Setas para subir / descer */}
+                              <div className="flex flex-col gap-0.5">
+                                <button
+                                  type="button"
+                                  disabled={index === 0}
+                                  onClick={() => handleSwapOrder(index, index - 1, sortedProducts)}
+                                  className="p-1 rounded bg-slate-100 hover:bg-teal-100 text-slate-700 hover:text-teal-800 disabled:opacity-20 disabled:hover:bg-slate-100 transition-colors cursor-pointer"
+                                  title="Mover para cima (Subir produto)"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={index === sortedProducts.length - 1}
+                                  onClick={() => handleSwapOrder(index, index + 1, sortedProducts)}
+                                  className="p-1 rounded bg-slate-100 hover:bg-teal-100 text-slate-700 hover:text-teal-800 disabled:opacity-20 disabled:hover:bg-slate-100 transition-colors cursor-pointer"
+                                  title="Mover para baixo (Descer produto)"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              {/* Campo numérico editável */}
+                              <input
+                                type="number"
+                                min="1"
+                                defaultValue={p.displayOrder || (index + 1)}
+                                key={`${p.id}-${p.displayOrder}`}
+                                onBlur={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  if (!isNaN(val) && val !== p.displayOrder) {
+                                    handleUpdateSingleOrder(p, val);
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    const val = parseInt((e.target as HTMLInputElement).value, 10);
+                                    if (!isNaN(val) && val !== p.displayOrder) {
+                                      handleUpdateSingleOrder(p, val);
+                                    }
+                                  }
+                                }}
+                                className="w-16 p-1.5 bg-slate-50 border border-slate-300 rounded-lg font-mono font-bold text-center text-slate-900 focus:bg-white focus:border-teal-500 focus:outline-hidden"
+                                title="Digite a nova posição e tecle Enter ou clique fora"
+                              />
+                            </div>
+                          </td>
                           <td className="p-4">
                             <div className="flex items-center gap-2">
                               <button
@@ -1290,7 +1438,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
             )}
 
           </div>
-        )}
+        );
+      })()}
 
         {/* TAB 3: ESTATÍSTICAS */}
         {activeTab === 'estatisticas' && (() => {

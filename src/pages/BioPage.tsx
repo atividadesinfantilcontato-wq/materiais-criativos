@@ -14,12 +14,15 @@ export const BioPage: React.FC<BioPageProps> = ({ products, onNavigate, onSelect
   const [showHowItWorksModal, setShowHowItWorksModal] = useState(false);
 
   // Filter published products strictly originating from Firestore
-  const publishedProducts = products.filter(p => p._source === 'firestore' && p.status !== 'draft');
+  const publishedProducts = products
+    .filter(p => p._source === 'firestore' && p.status !== 'draft')
+    .sort((a, b) => (a.displayOrder || 999) - (b.displayOrder || 999) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
   const highlightedProducts = publishedProducts.filter(p => p.socialFeatured || p.featured);
   
   // Sort by display order
   const displayProducts = (highlightedProducts.length > 0 ? highlightedProducts : publishedProducts)
-    .sort((a, b) => (a.displayOrder || 99) - (b.displayOrder || 99))
+    .sort((a, b) => (a.displayOrder || 999) - (b.displayOrder || 999))
     .slice(0, 6);
 
   const scrollToDestaques = () => {

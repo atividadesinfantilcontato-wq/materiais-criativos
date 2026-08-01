@@ -15,7 +15,7 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ products, onSelect
   const publishedProducts = useMemo(() => {
     return products
       .filter(p => p._source === 'firestore' && p.status !== 'draft')
-      .sort((a, b) => (a.displayOrder || 99) - (b.displayOrder || 99));
+      .sort((a, b) => (a.displayOrder || 999) - (b.displayOrder || 999) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [products]);
 
   const categories = useMemo(() => {
