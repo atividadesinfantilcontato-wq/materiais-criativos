@@ -1,16 +1,28 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Product } from '../types';
 import { ProductCard } from '../components/ProductCard';
 import { Search, Info, FileCheck, ShieldCheck } from 'lucide-react';
+import { SEO } from '../components/SEO';
 
 interface MaterialsPageProps {
   products: Product[];
   onSelectProduct: (slug: string) => void;
+  initialCategory?: string;
 }
 
-export const MaterialsPage: React.FC<MaterialsPageProps> = ({ products, onSelectProduct }) => {
+export const MaterialsPage: React.FC<MaterialsPageProps> = ({ products, onSelectProduct, initialCategory }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
   const [searchQuery, setSearchQuery] = useState<string>('');
+
+  useEffect(() => {
+    if (initialCategory) {
+      const cleanCat = initialCategory.toLowerCase().replace(/-/g, ' ');
+      setSelectedCategory(prev => {
+        // Try to match in products or use formatted category
+        return cleanCat;
+      });
+    }
+  }, [initialCategory]);
 
   const publishedProducts = useMemo(() => {
     return products
@@ -39,6 +51,11 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ products, onSelect
 
   return (
     <div className="min-h-screen bg-slate-50/60 pb-20">
+      <SEO
+        title={selectedCategory === 'Todas' ? 'Materiais Pedagógicos em PDF para Imprimir | Materiais Criativos' : `Atividades de ${selectedCategory} em PDF | Materiais Criativos`}
+        description="Encontre e baixe atividades pedagógicas em PDF prontas para imprimir. Atividades de alfabetização, matemática, coordenação motora e materiais para educação infantil."
+        canonicalUrl="https://www.materiaiscriativos.com.br/materiais"
+      />
       
       {/* Hero / Header Section */}
       <section className="bg-white border-b border-slate-200/80 pt-10 pb-12 px-4 sm:px-6 lg:px-8">

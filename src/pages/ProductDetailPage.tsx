@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Product } from '../types';
-import { extractYoutubeEmbedId } from '../utils/slug';
+import { extractYoutubeEmbedId, generateSlug } from '../utils/slug';
 import { trackProductView, trackHotmartClick, trackYoutubeClick } from '../services/analyticsService';
+import { SEO } from '../components/SEO';
+import { generateProductSchema } from '../utils/seo';
 import { 
   FileText, 
   Printer, 
@@ -107,8 +109,23 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
     }
   ];
 
+  const productSlug = product.slug || generateSlug(product.title) || product.id;
+  const canonicalUrl = `https://www.materiaiscriativos.com.br/atividade/${productSlug}`;
+  const pageTitle = `${product.title} | Atividade Pedagógica em PDF para Imprimir`;
+  const pageDescription = `${product.shortSummary || product.fullDescription?.slice(0, 150) || 'Atividade pedagógica em PDF'} Baixe atividade pedagógica em PDF para imprimir e aplicar com crianças.`;
+  const ogImg = candidateImages[0] || 'https://www.materiaiscriativos.com.br/og-image.png';
+  const schemaObj = generateProductSchema(product, canonicalUrl);
+
   return (
     <div className="min-h-screen bg-slate-50/50 pb-24">
+      <SEO
+        title={pageTitle}
+        description={pageDescription}
+        canonicalUrl={canonicalUrl}
+        ogImage={ogImg}
+        ogType="product"
+        schemaData={schemaObj}
+      />
       
       {/* Breadcrumb Header */}
       <div className="bg-white border-b border-slate-200/80 py-3 px-4 sm:px-6 lg:px-8 text-xs font-medium text-slate-500">
@@ -135,7 +152,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
                 {selectedImage && !imageError ? (
                   <img
                     src={selectedImage}
-                    alt={product.title}
+                    alt={`Atividade ${product.title} em PDF para imprimir`}
                     referrerPolicy="no-referrer"
                     onError={handleMainImgError}
                     className="w-full h-full object-cover"

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Product } from '../types';
-import { BookOpen, Sparkles, HelpCircle, FileText, CheckCircle2, ShieldCheck, ArrowRight, Printer, Star } from 'lucide-react';
+import { BookOpen, Sparkles, HelpCircle, FileText, CheckCircle2, ShieldCheck, ArrowRight, Printer, Star, Layers, Heart, Compass } from 'lucide-react';
 import { ProductCard } from '../components/ProductCard';
 import { trackBioButtonClick } from '../services/analyticsService';
+import { SEO } from '../components/SEO';
+import { generateWebSiteSchema } from '../utils/seo';
 
 interface BioPageProps {
   products: Product[];
@@ -36,6 +38,12 @@ export const BioPage: React.FC<BioPageProps> = ({ products, onNavigate, onSelect
 
   return (
     <div className="min-h-screen bg-slate-50/50 pb-16">
+      <SEO
+        title="Materiais Criativos | Atividades Pedagógicas em PDF para Imprimir"
+        description="Encontre atividades pedagógicas em PDF para imprimir e aplicar com crianças. Materiais criativos para educação infantil, coordenação motora, alfabetização, números, cores, formas e atividades lúdicas."
+        canonicalUrl="https://www.materiaiscriativos.com.br"
+        schemaData={generateWebSiteSchema()}
+      />
       
       {/* Top Header Card */}
       <div className="max-w-xl mx-auto pt-8 sm:pt-12 px-4 text-center">
@@ -172,6 +180,69 @@ export const BioPage: React.FC<BioPageProps> = ({ products, onNavigate, onSelect
           </button>
         </div>
       </div>
+
+      {/* SEÇÃO SEO ORGANIZADA DA HOME */}
+      <section className="max-w-4xl mx-auto mt-16 px-4 sm:px-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/80 shadow-xs space-y-8">
+          <div className="border-b border-slate-100 pb-6 text-center sm:text-left">
+            <span className="px-3 py-1 rounded-full bg-teal-50 text-teal-700 text-xs font-bold uppercase tracking-wider border border-teal-100">
+              Guia de Recursos Pedagógicos
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-3 tracking-tight">
+              Atividades pedagógicas em PDF para imprimir
+            </h2>
+            <p className="mt-3 text-sm sm:text-base text-slate-600 leading-relaxed">
+              O <strong>Materiais Criativos</strong> reúne atividades pedagógicas em PDF para professores, famílias e educadores que procuram recursos prontos para imprimir e aplicar com crianças. Aqui você encontra materiais lúdicos para educação infantil, alfabetização, coordenação motora, matemática, cores, formas, números, recorte, colagem, jogos com tampinhas e propostas criativas para sala de aula.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {/* Subtítulo 1 */}
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+              <div className="flex items-center gap-2.5 text-teal-700 font-bold text-base">
+                <Printer className="w-5 h-5 shrink-0" />
+                <h3>1. Materiais prontos para imprimir</h3>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                Arquivos 100% digitais entregues em formato PDF de alta resolução no padrão A4. Baixe instantaneamente e imprima quantas vezes precisar na sua impressora doméstica ou gráfica.
+              </p>
+            </div>
+
+            {/* Subtítulo 2 */}
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+              <div className="flex items-center gap-2.5 text-teal-700 font-bold text-base">
+                <Heart className="w-5 h-5 shrink-0" />
+                <h3>2. Atividades para educação infantil</h3>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                Recursos elaborados para promover o desenvolvimento cognitivo, a aprendizagem significativa e a criatividade das crianças durante as fases iniciais do aprendizado.
+              </p>
+            </div>
+
+            {/* Subtítulo 3 */}
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+              <div className="flex items-center gap-2.5 text-teal-700 font-bold text-base">
+                <Layers className="w-5 h-5 shrink-0" />
+                <h3>3. Recursos para professores e famílias</h3>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                Atividades versáteis para enriquecer planos de aula, momentos de reforço escolar, projetos pedagógicos em sala de aula e dinâmicas educativas no ambiente familiar.
+              </p>
+            </div>
+
+            {/* Subtítulo 4 */}
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+              <div className="flex items-center gap-2.5 text-teal-700 font-bold text-base">
+                <Compass className="w-5 h-5 shrink-0" />
+                <h3>4. Aprendizagem de forma lúdica</h3>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                Estímulos práticos para o fortalecimento da coordenação motora fina, percepção visual, raciocínio lógico, reconhecimento de cores e números, com autonomia e diversão.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Modal: Como funciona a entrega */}
       {showHowItWorksModal && (

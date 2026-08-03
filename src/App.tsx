@@ -69,8 +69,9 @@ export default function App() {
   }, []);
 
   const navigateTo = (path: string) => {
-    setCurrentPath(path);
-    window.history.pushState({}, '', `#${path}`);
+    const targetPath = path.startsWith('/') ? path : `/${path}`;
+    setCurrentPath(targetPath);
+    window.history.pushState({}, '', targetPath);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -105,6 +106,17 @@ export default function App() {
         <MaterialsPage
           products={products}
           onSelectProduct={handleSelectProduct}
+        />
+      );
+    }
+
+    if (rawPath.startsWith('/categoria/')) {
+      const catSlug = rawPath.replace(/^\/categoria\//, '');
+      return (
+        <MaterialsPage
+          products={products}
+          onSelectProduct={handleSelectProduct}
+          initialCategory={catSlug}
         />
       );
     }

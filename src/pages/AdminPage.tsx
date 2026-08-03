@@ -18,7 +18,7 @@ import {
   ShieldCheck, Settings, Home, FileText, Upload, 
   AlertCircle, Key, Mail, RefreshCw, Eye,
   BarChart2, Share2, Copy, TrendingUp, Users, MousePointer, Smartphone, Globe, Link as LinkIcon, CheckCircle2, MapPin, Navigation, Building2,
-  ArrowUp, ArrowDown, ListOrdered
+  ArrowUp, ArrowDown, ListOrdered, ExternalLink
 } from 'lucide-react';
 import { fetchAnalyticsEventsAsync, purgeAllAnalyticsEventsAsync, AnalyticsEventRecord } from '../services/analyticsService';
 
@@ -2216,6 +2216,41 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                   <p className="text-slate-600 mt-0.5">
                     Endpoint de upload ativo em <code className="bg-slate-200 px-1 py-0.5 rounded">/api/upload-r2</code>. Arquivos são salvos diretamente no bucket R2 quando as credenciais <code className="bg-slate-200 px-1 py-0.5 rounded">CLOUDFLARE_ACCOUNT_ID</code>, <code className="bg-slate-200 px-1 py-0.5 rounded">R2_ACCESS_KEY_ID</code>, e <code className="bg-slate-200 px-1 py-0.5 rounded">R2_PUBLIC_URL</code> estiverem preenchidas.
                   </p>
+                </div>
+              </div>
+
+              {/* Card Google Search Console & SEO */}
+              <div className="p-5 rounded-2xl bg-teal-50/50 border border-teal-200 space-y-4">
+                <div className="flex items-start gap-3">
+                  <Globe className="w-5 h-5 text-teal-700 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-slate-900 block text-sm">Google Search Console & SEO Técnico</strong>
+                    <p className="text-slate-600 mt-0.5">
+                      O site está configurado com Sitemap.xml, Robots.txt, Meta Tags OpenGraph, Schema.org e URLs amigáveis.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                  <a
+                    href="/sitemap.xml"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-3 bg-white rounded-xl border border-teal-200 hover:border-teal-400 text-teal-900 font-bold flex items-center justify-between text-xs transition-all"
+                  >
+                    <span>📄 Ver Sitemap.xml</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-teal-600" />
+                  </a>
+
+                  <a
+                    href="/robots.txt"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-3 bg-white rounded-xl border border-teal-200 hover:border-teal-400 text-teal-900 font-bold flex items-center justify-between text-xs transition-all"
+                  >
+                    <span>🤖 Ver Robots.txt</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-teal-600" />
+                  </a>
                 </div>
               </div>
 

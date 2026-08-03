@@ -9,6 +9,7 @@ import checkR2Handler from './api/check-r2';
 import purgeR2Handler from './api/purge-r2';
 import listR2Handler from './api/list-r2';
 import purgeAnalyticsHandler from './api/purge-analytics';
+import sitemapHandler from './api/sitemap';
 
 dotenv.config();
 
@@ -99,6 +100,28 @@ app.all('/api/list-r2', listR2Handler);
 
 // API Route: Purge Analytics Events
 app.all('/api/purge-analytics', purgeAnalyticsHandler);
+
+// SEO Routes: Sitemap.xml & Robots.txt
+app.all('/sitemap.xml', sitemapHandler);
+app.all('/api/sitemap', sitemapHandler);
+
+app.get('/robots.txt', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.end([
+    'User-agent: *',
+    'Allow: /',
+    '',
+    'Disallow: /admin',
+    'Disallow: /prova-zero',
+    'Disallow: /prova-real',
+    'Disallow: /check-conexao',
+    'Disallow: /versao',
+    'Disallow: /api/',
+    '',
+    'Sitemap: https://www.materiaiscriativos.com.br/sitemap.xml',
+    ''
+  ].join('\r\n'));
+});
 
 // API Route: Healthcheck
 app.get('/api/health', (req, res) => {

@@ -109,7 +109,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelectProdu
         {imageSrc && !hasError ? (
           <img
             src={imageSrc}
-            alt={product.title}
+            alt={`Atividade ${product.title} em PDF para imprimir`}
             referrerPolicy="no-referrer"
             onLoad={() => setImageLoaded(true)}
             onError={handleImgError}

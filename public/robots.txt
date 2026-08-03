@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+
+Disallow: /admin
+Disallow: /prova-zero
+Disallow: /prova-real
+Disallow: /check-conexao
+Disallow: /versao
+Disallow: /api/
+
+Sitemap: https://www.materiaiscriativos.com.br/sitemap.xml
