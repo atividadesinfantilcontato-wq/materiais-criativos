@@ -20,7 +20,7 @@ import {
   BarChart2, Share2, Copy, TrendingUp, Users, MousePointer, Smartphone, Globe, Link as LinkIcon, CheckCircle2, MapPin, Navigation, Building2,
   ArrowUp, ArrowDown, ListOrdered
 } from 'lucide-react';
-import { fetchAnalyticsEventsAsync, AnalyticsEventRecord } from '../services/analyticsService';
+import { fetchAnalyticsEventsAsync, purgeAllAnalyticsEventsAsync, AnalyticsEventRecord } from '../services/analyticsService';
 
 interface AdminPageProps {
   products: Product[];
@@ -34,6 +34,12 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
   const [isAdminAuthorized, setIsAdminAuthorized] = useState<boolean>(false);
   const [authChecking, setAuthChecking] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Analytics Purge & Filter state
+  const [showPurgeAnalyticsModal, setShowPurgeAnalyticsModal] = useState<boolean>(false);
+  const [purgeAnalyticsConfirmInput, setPurgeAnalyticsConfirmInput] = useState<string>('');
+  const [purgeAnalyticsLoading, setPurgeAnalyticsLoading] = useState<boolean>(false);
+  const [analyticsTimeFilter, setAnalyticsTimeFilter] = useState<'today' | '7days' | '30days' | 'all'>('all');
 
   // Login form state
   const [acesso, setAcesso] = useState<string>(''); // E-mail
@@ -1441,35 +1447,54 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
         );
       })()}
 
-        {/* TAB 3: ESTATÍSTICAS */}
+        {/* TAB 3: ESTATÍSTICAS / ANALYTICS */}
         {activeTab === 'estatisticas' && (() => {
           const nowTs = Date.now();
           const todayStr = new Date().toISOString().split('T')[0];
           const sevenDaysAgo = nowTs - 7 * 24 * 60 * 60 * 1000;
           const thirtyDaysAgo = nowTs - 30 * 24 * 60 * 60 * 1000;
 
-          const visitsToday = analyticsEvents.filter(e => e.dateKey === todayStr || (new Date(e.createdAt).getTime() > nowTs - 24*60*60*1000));
+          // Apply time filter
+          const filteredEvents = analyticsEvents.filter(e => {
+            if (analyticsTimeFilter === 'today') {
+              return e.dateKey === todayStr || (new Date(e.createdAt).getTime() > nowTs - 24 * 60 * 60 * 1000);
+            }
+            if (analyticsTimeFilter === '7days') {
+              return new Date(e.createdAt).getTime() >= sevenDaysAgo;
+            }
+            if (analyticsTimeFilter === '30days') {
+              return new Date(e.createdAt).getTime() >= thirtyDaysAgo;
+            }
+            return true; // 'all'
+          });
+
+          const pageViews = filteredEvents.filter(e => e.eventType === 'page_view');
+          const productViews = filteredEvents.filter(e => e.eventType === 'product_view');
+          const cardClicks = filteredEvents.filter(e => e.eventType === 'product_card_click' || e.eventType === 'material_card_click');
+          const hotmartClicks = filteredEvents.filter(e => e.eventType === 'hotmart_click');
+
+          const visitsToday = analyticsEvents.filter(e => e.dateKey === todayStr || (new Date(e.createdAt).getTime() > nowTs - 24 * 60 * 60 * 1000));
           const visits7Days = analyticsEvents.filter(e => new Date(e.createdAt).getTime() >= sevenDaysAgo);
           const visits30Days = analyticsEvents.filter(e => new Date(e.createdAt).getTime() >= thirtyDaysAgo);
-          const hotmartClicks = analyticsEvents.filter(e => e.eventType === 'hotmart_click');
 
           // Source breakdown
           const sourceMap: Record<string, { name: string; count: number; color: string }> = {
             instagram: { name: 'Instagram', count: 0, color: 'bg-pink-500' },
+            facebook: { name: 'Facebook', count: 0, color: 'bg-blue-600' },
             tiktok: { name: 'TikTok', count: 0, color: 'bg-slate-900' },
             youtube: { name: 'YouTube', count: 0, color: 'bg-red-600' },
             whatsapp: { name: 'WhatsApp', count: 0, color: 'bg-emerald-600' },
-            facebook: { name: 'Facebook', count: 0, color: 'bg-blue-600' },
             google: { name: 'Google', count: 0, color: 'bg-amber-500' },
             pinterest: { name: 'Pinterest', count: 0, color: 'bg-red-500' },
             telegram: { name: 'Telegram', count: 0, color: 'bg-sky-500' },
             threads: { name: 'Threads', count: 0, color: 'bg-slate-800' },
+            'x-twitter': { name: 'Twitter / X', count: 0, color: 'bg-[#1DA1F2]' },
             twitter: { name: 'Twitter / X', count: 0, color: 'bg-[#1DA1F2]' },
             direct: { name: 'Direto', count: 0, color: 'bg-teal-600' },
             other: { name: 'Outros', count: 0, color: 'bg-slate-500' }
           };
 
-          analyticsEvents.forEach(e => {
+          filteredEvents.forEach(e => {
             const src = (e.source || 'direct').toLowerCase();
             if (sourceMap[src]) {
               sourceMap[src].count++;
@@ -1478,14 +1503,14 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
             }
           });
 
-          const sortedSources = Object.values(sourceMap).sort((a, b) => b.count - a.count);
-          const totalVisitsCount = analyticsEvents.length || 1;
+          const sortedSources = Object.values(sourceMap).filter(s => s.name !== 'Twitter / X' || s.count > 0).sort((a, b) => b.count - a.count);
+          const totalVisitsCount = filteredEvents.length || 1;
           const topSourceLabel = sortedSources[0]?.count > 0 ? sortedSources[0].name : 'Direto';
 
           // Top products viewed
           const productCounts: Record<string, { title: string; count: number }> = {};
-          analyticsEvents
-            .filter(e => e.eventType === 'product_view' || e.eventType === 'material_card_click')
+          filteredEvents
+            .filter(e => e.eventType === 'product_view' || e.eventType === 'product_card_click' || e.eventType === 'material_card_click')
             .forEach(e => {
               const name = e.productTitle || e.productSlug || 'Sem nome';
               if (!productCounts[name]) {
@@ -1499,7 +1524,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
 
           // UTM links table
           const utmMap: Record<string, { source: string; medium: string; campaign: string; count: number }> = {};
-          analyticsEvents.filter(e => e.utmSource).forEach(e => {
+          filteredEvents.filter(e => e.utmSource).forEach(e => {
             const key = `${e.utmSource}|${e.utmMedium || 'sem-medium'}|${e.utmCampaign || 'sem-campaign'}`;
             if (!utmMap[key]) {
               utmMap[key] = {
@@ -1518,7 +1543,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
           const regionMap: Record<string, { region: string; country: string; count: number }> = {};
           const countryMap: Record<string, { country: string; count: number }> = {};
 
-          analyticsEvents.forEach(e => {
+          filteredEvents.forEach(e => {
             const city = e.city || 'Não identificado';
             const region = e.region || '-';
             const country = e.country || e.countryCode || '-';
@@ -1552,27 +1577,94 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
           return (
             <div className="space-y-8">
               
-              {/* Header & Reload */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200">
+              {/* Header & Control Toolbar */}
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
                 <div>
-                  <h2 className="text-xl font-extrabold text-slate-900">Analytics de Tráfego & Origem</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Métricas de acessos, conversões na Hotmart e canais de origem</p>
+                  <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
+                    <BarChart2 className="w-5 h-5 text-teal-600" />
+                    <span>Analytics Real das Atividades & Tráfego</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Métricas reais de acessos em produção, desconsiderando dev/admin e duplicados</p>
                 </div>
-                <button
-                  onClick={loadAnalytics}
-                  disabled={analyticsLoading}
-                  className="px-4 py-2.5 rounded-2xl bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold transition-all flex items-center gap-2 border border-teal-200 cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${analyticsLoading ? 'animate-spin' : ''}`} />
-                  <span>{analyticsLoading ? 'Atualizando...' : 'Atualizar Dados'}</span>
-                </button>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Period Filter */}
+                  <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setAnalyticsTimeFilter('all')}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                        analyticsTimeFilter === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Tudo ({analyticsEvents.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAnalyticsTimeFilter('today')}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                        analyticsTimeFilter === 'today' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Hoje ({visitsToday.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAnalyticsTimeFilter('7days')}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                        analyticsTimeFilter === '7days' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      7 dias ({visits7Days.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAnalyticsTimeFilter('30days')}
+                      className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                        analyticsTimeFilter === '30days' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      30 dias ({visits30Days.length})
+                    </button>
+                  </div>
+
+                  {/* Reload Button */}
+                  <button
+                    type="button"
+                    onClick={loadAnalytics}
+                    disabled={analyticsLoading}
+                    className="px-3.5 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold transition-all flex items-center gap-1.5 border border-teal-200 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${analyticsLoading ? 'animate-spin' : ''}`} />
+                    <span>Atualizar</span>
+                  </button>
+
+                  {/* ZERAR VISUALIZAÇÕES BUTTON */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPurgeAnalyticsConfirmInput('');
+                      setShowPurgeAnalyticsModal(true);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 text-xs font-extrabold transition-all flex items-center gap-1.5 border border-rose-200 cursor-pointer"
+                    title="Apagar permanentemente todas as métricas de visualização"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Zerar Visualizações</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Disclaimer */}
-              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-                <span>
-                  <strong>Aviso de Precisão:</strong> A detecção de origem é 100% precisa quando a divulgação utiliza links com parâmetro UTM. Algumas redes sociais e aplicativos móveis podem ocultar o referrer do navegador.
+              {/* Disclaimer & Environment Badge */}
+              <div className="p-4 rounded-2xl bg-teal-50/70 border border-teal-200/80 text-xs text-teal-900 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="w-5 h-5 text-teal-600 shrink-0" />
+                  <span>
+                    <strong>Filtro de Tráfego Ativo:</strong> Acessos via <code className="font-mono bg-teal-100 px-1 rounded text-teal-800">localhost</code>, <code className="font-mono bg-teal-100 px-1 rounded text-teal-800">ais-dev</code>, <code className="font-mono bg-teal-100 px-1 rounded text-teal-800">us-west1.run.app</code>, painel admin e rotas técnicas são <strong>bloqueados automaticamente</strong>. Apenas usuários finais nos domínios oficiais geram visualizações.
+                  </span>
+                </div>
+                <span className="px-2.5 py-1 bg-white border border-teal-300 rounded-full font-mono text-[10px] text-teal-800 font-black shrink-0">
+                  REAIS APENAS
                 </span>
               </div>
 
@@ -1580,18 +1672,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 
                 <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase">Visitas Hoje</div>
-                  <div className="text-2xl font-extrabold text-teal-700">{visitsToday.length}</div>
+                  <div className="text-[11px] font-bold text-slate-500 uppercase">Acessos à Página</div>
+                  <div className="text-2xl font-extrabold text-teal-700">{pageViews.length}</div>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase">Últimos 7 dias</div>
-                  <div className="text-2xl font-extrabold text-slate-900">{visits7Days.length}</div>
+                  <div className="text-[11px] font-bold text-slate-500 uppercase">Views de Produtos</div>
+                  <div className="text-2xl font-extrabold text-slate-900">{productViews.length}</div>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-1">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase">Últimos 30 dias</div>
-                  <div className="text-2xl font-extrabold text-slate-900">{visits30Days.length}</div>
+                  <div className="text-[11px] font-bold text-slate-500 uppercase">Cliques "Saiba mais"</div>
+                  <div className="text-2xl font-extrabold text-indigo-700">{cardClicks.length}</div>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-xs space-y-1">
@@ -1810,7 +1902,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                 <div className="p-5 border-b border-slate-100 flex items-center justify-between">
                   <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
                     <Users className="w-4 h-4 text-teal-600" />
-                    <span>Últimos Acessos e Ações</span>
+                    <span>Últimos Acessos e Ações Reais</span>
                   </h3>
                   <span className="text-xs text-slate-400 font-medium">Exibindo os últimos 50 registros</span>
                 </div>
@@ -1820,7 +1912,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                     <thead className="bg-slate-50 font-bold text-slate-800 uppercase tracking-wider border-b border-slate-200">
                       <tr>
                         <th className="p-3.5">Data / Hora</th>
-                        <th className="p-3.5">Origem</th>
+                        <th className="p-3.5">Origem / Meio</th>
                         <th className="p-3.5">Evento / Página</th>
                         <th className="p-3.5">Produto</th>
                         <th className="p-3.5">Cidade</th>
@@ -1830,14 +1922,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {analyticsEvents.length === 0 ? (
+                      {filteredEvents.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="p-6 text-center text-slate-400">
-                            Nenhum registro de acesso encontrado.
+                          <td colSpan={8} className="p-8 text-center text-slate-400">
+                            <div className="space-y-2">
+                              <BarChart2 className="w-8 h-8 mx-auto text-slate-300 stroke-1" />
+                              <p className="font-bold text-slate-600">Nenhum registro de acesso encontrado no período.</p>
+                              <p className="text-xs text-slate-400">Os acessos reais nos domínios oficiais aparecerão aqui automaticamente.</p>
+                            </div>
                           </td>
                         </tr>
                       ) : (
-                        analyticsEvents.slice(0, 50).map((e) => (
+                        filteredEvents.slice(0, 50).map((e) => (
                           <tr key={e.id} className="hover:bg-slate-50 transition-colors">
                             <td className="p-3.5 text-slate-500 font-mono whitespace-nowrap">
                               {new Date(e.createdAt).toLocaleString('pt-BR')}
@@ -1854,6 +1950,11 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                               }`}>
                                 {e.sourceLabel || e.source || 'Direto'}
                               </span>
+                              {e.medium && (
+                                <span className="text-[10px] text-slate-400 ml-1.5 font-mono">
+                                  [{e.medium}]
+                                </span>
+                              )}
                               {e.utmSource && (
                                 <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                                   utm: {e.utmSource}
@@ -2581,6 +2682,92 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
         )}
 
       </div>
+
+      {/* MODAL DE CONFIRMAÇÃO PARA ZERAR VISUALIZAÇÕES */}
+      {showPurgeAnalyticsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-rose-100 space-y-5 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="p-3 bg-rose-100 rounded-2xl">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Zerar Visualizações</h3>
+                <p className="text-xs text-rose-600 font-bold">Ação Irreversível</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-600">
+              <p>
+                Esta ação apaga permanentemente todas as métricas de tráfego, acessos, cliques e estatísticas registradas na coleção <code className="font-mono bg-slate-100 text-slate-900 px-1 rounded">analyticsEvents</code> do Firestore.
+              </p>
+              <div className="p-3 bg-rose-50 rounded-2xl border border-rose-200 text-rose-900 space-y-1">
+                <strong>Para confirmar, digite exatamente:</strong>
+                <p className="font-mono font-black text-xs text-rose-700 select-all">ZERAR VISUALIZAÇÕES</p>
+              </div>
+
+              <input
+                type="text"
+                value={purgeAnalyticsConfirmInput}
+                onChange={(e) => setPurgeAnalyticsConfirmInput(e.target.value)}
+                placeholder="Digite ZERAR VISUALIZAÇÕES"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 font-mono text-xs uppercase focus:outline-none focus:ring-2 focus:ring-rose-500 font-bold"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPurgeAnalyticsModal(false);
+                  setPurgeAnalyticsConfirmInput('');
+                }}
+                disabled={purgeAnalyticsLoading}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const clean = purgeAnalyticsConfirmInput.trim().toUpperCase();
+                  if (clean !== 'ZERAR VISUALIZACOS' && clean !== 'ZERAR VISUALIZAÇÕES') {
+                    showToast('Digite a frase exata: ZERAR VISUALIZAÇÕES');
+                    return;
+                  }
+                  setPurgeAnalyticsLoading(true);
+                  try {
+                    const res = await purgeAllAnalyticsEventsAsync();
+                    setAnalyticsEvents([]);
+                    setShowPurgeAnalyticsModal(false);
+                    setPurgeAnalyticsConfirmInput('');
+                    showToast(`Visualizações zeradas com sucesso! (${res.count} registros removidos)`);
+                  } catch (err: any) {
+                    showToast('Erro ao zerar: ' + (err.message || 'Falha na operação'));
+                  } finally {
+                    setPurgeAnalyticsLoading(false);
+                  }
+                }}
+                disabled={purgeAnalyticsLoading || (purgeAnalyticsConfirmInput.trim().toUpperCase() !== 'ZERAR VISUALIZACOS' && purgeAnalyticsConfirmInput.trim().toUpperCase() !== 'ZERAR VISUALIZAÇÕES')}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-extrabold shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+              >
+                {purgeAnalyticsLoading ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Zerando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Confirmar Limpeza</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

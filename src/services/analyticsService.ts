@@ -1,9 +1,10 @@
 import { db, isFirebaseConfigured } from './firebase';
-import { collection, addDoc, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, limit } from 'firebase/firestore';
 
 export interface AnalyticsOrigin {
   source: string;
   sourceLabel: string;
+  medium: string;
   referrer: string;
   referrerDomain: string;
   utmSource: string;
@@ -14,7 +15,7 @@ export interface AnalyticsOrigin {
 }
 
 export interface AnalyticsEventPayload {
-  eventType: 'page_view' | 'product_view' | 'material_card_click' | 'bio_button_click' | 'hotmart_click' | 'youtube_click';
+  eventType: 'page_view' | 'product_view' | 'product_card_click' | 'material_card_click' | 'bio_button_click' | 'hotmart_click' | 'youtube_click';
   pagePath?: string;
   pageTitle?: string;
   productId?: string;
@@ -52,23 +53,72 @@ export interface AnalyticsEventRecord extends AnalyticsOrigin {
   createdAt: string;
   dateKey: string;
   hour: number;
+  isProduction?: boolean;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
   instagram: 'Instagram',
+  facebook: 'Facebook',
   tiktok: 'TikTok',
   youtube: 'YouTube',
   whatsapp: 'WhatsApp',
-  facebook: 'Facebook',
   google: 'Google',
   pinterest: 'Pinterest',
   telegram: 'Telegram',
   threads: 'Threads',
+  'x-twitter': 'Twitter / X',
   twitter: 'Twitter / X',
   direct: 'Direto',
   other: 'Outro site',
   unknown: 'Desconhecido',
 };
+
+export function isRealProductionDomain(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const hostname = (window.location.hostname || '').toLowerCase();
+  const href = (window.location.href || '').toLowerCase();
+  const hash = (window.location.hash || '').toLowerCase();
+  const pathname = (window.location.pathname || '').toLowerCase();
+
+  // 1. Block dev & preview environments
+  if (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.includes('ais-dev') ||
+    hostname.includes('us-west1.run.app') ||
+    hostname.includes('aistudio.google.com') ||
+    href.includes('ais-dev') ||
+    href.includes('us-west1')
+  ) {
+    return false;
+  }
+
+  // 2. Block admin and technical routes
+  if (
+    hash.startsWith('#/admin') ||
+    hash.startsWith('#/prova-zero') ||
+    hash.startsWith('#/prova-real') ||
+    hash.startsWith('#/check-conexao') ||
+    hash.startsWith('#/versao') ||
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/prova-zero') ||
+    pathname.startsWith('/prova-real') ||
+    pathname.startsWith('/check-conexao') ||
+    pathname.startsWith('/versao')
+  ) {
+    return false;
+  }
+
+  // 3. Allowed official domains
+  const ALLOWED_HOSTNAMES = [
+    'www.materiaiscriativos.com.br',
+    'materiaiscriativos.com.br',
+    'materiais-criativos.vercel.app',
+  ];
+
+  return ALLOWED_HOSTNAMES.includes(hostname);
+}
 
 function getVisitorId(): string {
   try {
@@ -93,6 +143,27 @@ function getSessionId(): string {
     return sid;
   } catch (e) {
     return 's_anon_' + Date.now();
+  }
+}
+
+function isDuplicateEvent(eventType: string, keyIdentifier: string): boolean {
+  try {
+    const historyRaw = sessionStorage.getItem('mc_event_history');
+    const history: Record<string, number> = historyRaw ? JSON.parse(historyRaw) : {};
+    const dedupeKey = `${eventType}_${keyIdentifier}`;
+    const now = Date.now();
+    const lastTime = history[dedupeKey] || 0;
+
+    // 30 minutes window = 30 * 60 * 1000 = 1,800,000 ms
+    if (now - lastTime < 30 * 60 * 1000) {
+      return true;
+    }
+
+    history[dedupeKey] = now;
+    sessionStorage.setItem('mc_event_history', JSON.stringify(history));
+    return false;
+  } catch (e) {
+    return false;
   }
 }
 
@@ -128,34 +199,37 @@ export function getAnalyticsOrigin(): AnalyticsOrigin {
   }
 
   let source = '';
+  let medium = utmMedium || '';
 
   // 1. UTM
   if (utmSource) {
     source = utmSource.toLowerCase().trim();
+    if (!medium) medium = 'paid';
   }
-  // 2. Special URL parameters
-  else if (fbclid) source = 'facebook';
-  else if (gclid) source = 'google';
-  else if (ttclid) source = 'tiktok';
-  else if (igshid) source = 'instagram';
-  else if (si) source = 'youtube';
-  // 3. Referrer domain
+  // 2. Click tracking IDs
+  else if (fbclid) { source = 'facebook'; medium = 'social'; }
+  else if (gclid) { source = 'google'; medium = 'search'; }
+  else if (ttclid) { source = 'tiktok'; medium = 'social'; }
+  else if (igshid) { source = 'instagram'; medium = 'social'; }
+  else if (si) { source = 'youtube'; medium = 'social'; }
+  // 3. Referrer domain mapping
   else if (referrerDomain) {
-    if (referrerDomain.includes('instagram.com')) source = 'instagram';
-    else if (referrerDomain.includes('tiktok.com')) source = 'tiktok';
-    else if (referrerDomain.includes('youtube.com') || referrerDomain.includes('youtu.be')) source = 'youtube';
-    else if (referrerDomain.includes('facebook.com') || referrerDomain.includes('fb.com')) source = 'facebook';
-    else if (referrerDomain.includes('whatsapp.com')) source = 'whatsapp';
-    else if (referrerDomain.includes('google.com')) source = 'google';
-    else if (referrerDomain.includes('pinterest.com')) source = 'pinterest';
-    else if (referrerDomain.includes('telegram.org') || referrerDomain.includes('t.me')) source = 'telegram';
-    else if (referrerDomain.includes('threads.net')) source = 'threads';
-    else if (referrerDomain.includes('twitter.com') || referrerDomain.includes('x.com') || referrerDomain.includes('t.co')) source = 'twitter';
-    else source = 'other';
+    if (referrerDomain.includes('instagram.com')) { source = 'instagram'; medium = 'social'; }
+    else if (referrerDomain.includes('facebook.com') || referrerDomain.includes('fb.com')) { source = 'facebook'; medium = 'social'; }
+    else if (referrerDomain.includes('tiktok.com')) { source = 'tiktok'; medium = 'social'; }
+    else if (referrerDomain.includes('youtube.com') || referrerDomain.includes('youtu.be')) { source = 'youtube'; medium = 'social'; }
+    else if (referrerDomain.includes('whatsapp.com') || referrerDomain.includes('wa.me')) { source = 'whatsapp'; medium = 'messaging'; }
+    else if (referrerDomain.includes('google.com')) { source = 'google'; medium = 'search'; }
+    else if (referrerDomain.includes('pinterest.com')) { source = 'pinterest'; medium = 'social'; }
+    else if (referrerDomain.includes('telegram.org') || referrerDomain.includes('t.me')) { source = 'telegram'; medium = 'messaging'; }
+    else if (referrerDomain.includes('threads.net')) { source = 'threads'; medium = 'social'; }
+    else if (referrerDomain.includes('twitter.com') || referrerDomain.includes('x.com') || referrerDomain.includes('t.co')) { source = 'x-twitter'; medium = 'social'; }
+    else { source = 'other'; medium = 'referral'; }
   }
   // 4. Direct
   else {
     source = 'direct';
+    medium = 'direct';
   }
 
   const sourceLabel = SOURCE_LABELS[source] || (source ? source.charAt(0).toUpperCase() + source.slice(1) : 'Desconhecido');
@@ -163,6 +237,7 @@ export function getAnalyticsOrigin(): AnalyticsOrigin {
   const origin: AnalyticsOrigin = {
     source,
     sourceLabel,
+    medium,
     referrer: rawReferrer,
     referrerDomain,
     utmSource,
@@ -206,6 +281,20 @@ function getDeviceInfo() {
 }
 
 export async function trackEventAsync(payload: AnalyticsEventPayload): Promise<void> {
+  // STRICT RULE: Only record real production domain events
+  if (!isRealProductionDomain()) {
+    return;
+  }
+
+  // Deduplication check for view events (30 minutes)
+  if (payload.eventType === 'page_view') {
+    const key = payload.pagePath || window.location.hash || '/';
+    if (isDuplicateEvent('page_view', key)) return;
+  } else if (payload.eventType === 'product_view') {
+    const key = payload.productSlug || payload.productId || 'prod_unknown';
+    if (isDuplicateEvent('product_view', key)) return;
+  }
+
   try {
     const origin = getAnalyticsOrigin();
     const device = getDeviceInfo();
@@ -218,6 +307,7 @@ export async function trackEventAsync(payload: AnalyticsEventPayload): Promise<v
       sessionId: getSessionId(),
       source: origin.source,
       sourceLabel: origin.sourceLabel,
+      medium: origin.medium,
       referrer: origin.referrer,
       referrerDomain: origin.referrerDomain,
       utmSource: origin.utmSource,
@@ -236,12 +326,12 @@ export async function trackEventAsync(payload: AnalyticsEventPayload): Promise<v
       browser: device.browser,
       browserLanguage: device.browserLanguage,
       userAgent: device.userAgent,
+      isProduction: true,
       createdAt: now.toISOString(),
       dateKey,
       hour: now.getHours(),
     };
 
-    // First attempt: call Vercel Serverless / Express API endpoint so Vercel Geolocation headers are captured
     let sentToApi = false;
     try {
       const response = await fetch('/api/track-event', {
@@ -253,11 +343,8 @@ export async function trackEventAsync(payload: AnalyticsEventPayload): Promise<v
       if (response.ok) {
         sentToApi = true;
       }
-    } catch (apiErr) {
-      // Backend route unreachable or network error
-    }
+    } catch (apiErr) {}
 
-    // Fallback if API route is not available (e.g. pure client mode without backend server running)
     if (!sentToApi) {
       if (isFirebaseConfigured && db) {
         await addDoc(collection(db, 'analyticsEvents'), {
@@ -265,11 +352,6 @@ export async function trackEventAsync(payload: AnalyticsEventPayload): Promise<v
           city: 'Não identificado',
           geoStatus: 'fallback_client',
         });
-      } else {
-        const localEvents = JSON.parse(localStorage.getItem('mc_local_analytics') || '[]');
-        localEvents.push({ ...eventDoc, city: 'Não identificado', geoStatus: 'local' });
-        if (localEvents.length > 500) localEvents.shift();
-        localStorage.setItem('mc_local_analytics', JSON.stringify(localEvents));
       }
     }
   } catch (err) {
@@ -293,7 +375,7 @@ export function trackProductView(product: { id?: string; slug?: string; title?: 
 
 export function trackMaterialCardClick(product: { id?: string; slug?: string; title?: string }) {
   trackEventAsync({
-    eventType: 'material_card_click',
+    eventType: 'product_card_click',
     productId: product.id,
     productSlug: product.slug,
     productTitle: product.title,
@@ -348,10 +430,26 @@ export async function fetchAnalyticsEventsAsync(limitCount = 1000): Promise<Anal
       console.warn('Failed to fetch analytics from Firestore:', err);
     }
   }
-  try {
-    const raw = localStorage.getItem('mc_local_analytics');
-    return raw ? JSON.parse(raw).reverse() : [];
-  } catch (e) {
-    return [];
+  return [];
+}
+
+export async function purgeAllAnalyticsEventsAsync(): Promise<{ success: boolean; count: number }> {
+  let count = 0;
+  if (isFirebaseConfigured && db) {
+    try {
+      const snap = await getDocs(collection(db, 'analyticsEvents'));
+      for (const docSnap of snap.docs) {
+        await deleteDoc(doc(db, 'analyticsEvents', docSnap.id));
+        count++;
+      }
+    } catch (err) {
+      console.warn('Failed to purge Firestore analyticsEvents:', err);
+    }
   }
+  try {
+    localStorage.removeItem('mc_local_analytics');
+    sessionStorage.removeItem('mc_event_history');
+  } catch (e) {}
+
+  return { success: true, count };
 }

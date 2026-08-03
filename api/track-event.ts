@@ -15,7 +15,7 @@ function getFirebaseDb() {
     apiKey,
     authDomain,
     projectId,
-    databaseURL: databaseId ? `https://${databaseId}.firebaseio.com` : undefined,
+    databaseURL: databaseId && databaseId !== '(default)' ? `https://${databaseId}.firebaseio.com` : undefined,
     messagingSenderId,
     appId,
   };
@@ -39,6 +39,34 @@ export default async function handler(req: any, res: any) {
 
   try {
     const payload = req.body || {};
+
+    const hostHeader = ((req.headers['x-forwarded-host'] || req.headers['host'] || '') as string).toLowerCase();
+    const refererHeader = ((req.headers['referer'] || req.headers['referrer'] || '') as string).toLowerCase();
+    const pagePath = (payload.pagePath || '/').toLowerCase();
+
+    // 1. Block non-production environments
+    if (
+      hostHeader.includes('localhost') ||
+      hostHeader.includes('127.0.0.1') ||
+      hostHeader.includes('ais-dev') ||
+      hostHeader.includes('us-west1.run.app') ||
+      hostHeader.includes('aistudio.google.com') ||
+      refererHeader.includes('ais-dev') ||
+      refererHeader.includes('us-west1')
+    ) {
+      return res.status(200).json({ success: false, reason: 'Non-production environment blocked' });
+    }
+
+    // 2. Block admin and technical routes
+    if (
+      pagePath.includes('/admin') ||
+      pagePath.includes('/prova-zero') ||
+      pagePath.includes('/prova-real') ||
+      pagePath.includes('/check-conexao') ||
+      pagePath.includes('/versao')
+    ) {
+      return res.status(200).json({ success: false, reason: 'Admin or technical route blocked' });
+    }
 
     const cityHeader = (req.headers['x-vercel-ip-city'] as string) || '';
     let city = 'Não identificado';

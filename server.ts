@@ -8,6 +8,7 @@ import trackEventHandler from './api/track-event';
 import checkR2Handler from './api/check-r2';
 import purgeR2Handler from './api/purge-r2';
 import listR2Handler from './api/list-r2';
+import purgeAnalyticsHandler from './api/purge-analytics';
 
 dotenv.config();
 
@@ -95,6 +96,9 @@ app.all('/api/purge-r2', purgeR2Handler);
 
 // API Route: List R2 Objects
 app.all('/api/list-r2', listR2Handler);
+
+// API Route: Purge Analytics Events
+app.all('/api/purge-analytics', purgeAnalyticsHandler);
 
 // API Route: Healthcheck
 app.get('/api/health', (req, res) => {
