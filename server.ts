@@ -123,6 +123,9 @@ app.get('/robots.txt', (req, res) => {
   ].join('\r\n'));
 });
 
+// Serve public folder for favicon, manifest, robots.txt, etc.
+app.use(express.static(path.join(process.cwd(), 'public')));
+
 // API Route: Healthcheck
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <style>
+      .outline { stroke: #0f766e; stroke-width: 10; stroke-linecap: round; stroke-linejoin: round; }
+      .thin-outline { stroke: #0f766e; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .dotted { stroke: #14b8a6; stroke-width: 5; stroke-dasharray: 8,6; fill: none; stroke-linecap: round; }
+      .text-mc { font-family: system-ui, -apple-system, sans-serif; font-weight: 800; fill: #0f766e; font-size: 20px; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <!-- Background for high contrast in browser tabs -->
+  <rect width="512" height="512" rx="110" fill="#ffffff" />
+
+  <!-- 1. Top Left Card (Sheet with Flower) -->
+  <g transform="translate(130, 80) rotate(-8)">
+    <rect x="0" y="0" width="140" height="160" rx="16" fill="#ccfbf1" class="outline" />
+    <!-- Dotted cut path around flower -->
+    <path d="M 20,20 L 120,20 L 120,140 L 20,140 Z" class="dotted" />
+    <!-- Flower Stem & Leaf -->
+    <path d="M 70,85 Q 70,120 70,125 M 70,105 Q 85,95 95,100 Q 85,115 70,110" fill="#14b8a6" stroke="#0f766e" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" />
+    <!-- Flower Petals -->
+    <circle cx="70" cy="55" r="14" fill="#f43f5e" />
+    <circle cx="85" cy="70" r="14" fill="#f43f5e" />
+    <circle cx="70" cy="85" r="14" fill="#f43f5e" />
+    <circle cx="55" cy="70" r="14" fill="#f43f5e" />
+    <!-- Flower Center -->
+    <circle cx="70" cy="70" r="12" fill="#fbbf24" stroke="#0f766e" stroke-width="4" />
+  </g>
+
+  <!-- 2. Pencil Top Right -->
+  <g transform="translate(300, 65) rotate(22)">
+    <!-- Eraser -->
+    <path d="M 15,0 L 45,0 C 53,0 55,6 55,14 L 55,30 L 5,30 L 5,14 C 5,6 7,0 15,0 Z" fill="#f43f5e" class="outline" />
+    <!-- Metallic Band -->
+    <rect x="5" y="30" width="50" height="12" fill="#e2e8f0" class="outline" />
+    <!-- Body -->
+    <rect x="5" y="42" width="50" height="100" fill="#14b8a6" class="outline" />
+    <line x1="22" y1="42" x2="22" y2="142" stroke="#0d9488" stroke-width="6" />
+    <line x1="38" y1="42" x2="38" y2="142" stroke="#0d9488" stroke-width="6" />
+    <!-- Wood Collar -->
+    <path d="M 5,142 L 30,190 L 55,142 Z" fill="#fef08a" class="outline" />
+    <!-- Graphite Tip -->
+    <path d="M 21,168 L 30,190 L 39,168 Z" fill="#1e293b" />
+  </g>
+
+  <!-- 3. Open Book Cover & Base -->
+  <path d="M 95,385 C 170,395 240,370 256,360 C 272,370 342,395 417,385 L 427,240 C 352,250 272,225 256,215 C 240,225 160,250 85,240 Z" fill="#0d9488" class="outline" />
+
+  <!-- Left Page -->
+  <path d="M 95,370 C 165,378 235,355 252,345 L 252,200 C 235,210 165,233 95,225 Z" fill="#ffffff" class="outline" />
+  <!-- Left Page Content: Heart & Dotted box -->
+  <path d="M 125,245 L 220,245 L 220,325 L 125,325 Z" class="dotted" />
+  <!-- Heart Icon -->
+  <path d="M 172,275 C 172,265 162,258 153,266 C 144,258 134,265 134,275 C 134,288 153,300 153,300 C 153,300 172,288 172,275 Z" fill="#f43f5e" stroke="#0f766e" stroke-width="4" stroke-linejoin="round" />
+  <!-- Scissors Icon -->
+  <g transform="translate(145, 310) scale(0.7)">
+    <circle cx="10" cy="20" r="8" fill="none" stroke="#0f766e" stroke-width="5" />
+    <circle cx="30" cy="20" r="8" fill="none" stroke="#0f766e" stroke-width="5" />
+    <line x1="15" y1="14" x2="35" y2="-5" stroke="#0f766e" stroke-width="5" stroke-linecap="round" />
+    <line x1="25" y1="14" x2="5" y2="-5" stroke="#0f766e" stroke-width="5" stroke-linecap="round" />
+  </g>
+
+  <!-- Right Page -->
+  <path d="M 417,370 C 347,378 277,355 260,345 L 260,200 C 277,210 347,233 417,225 Z" fill="#ffffff" class="outline" />
+  <!-- Right Page Content: Star & Lines -->
+  <!-- Star -->
+  <path d="M 338,235 L 344,252 L 362,252 L 347,263 L 353,280 L 338,269 L 323,280 L 329,263 L 314,252 L 332,252 Z" fill="#fbbf24" stroke="#0f766e" stroke-width="4" stroke-linejoin="round" />
+  <!-- Lines -->
+  <rect x="295" y="295" width="90" height="10" rx="5" fill="#14b8a6" />
+  <rect x="295" y="318" width="70" height="10" rx="5" fill="#14b8a6" />
+
+  <!-- Book Spine Center Fold -->
+  <line x1="256" y1="200" x2="256" y2="355" stroke="#0f766e" stroke-width="8" stroke-linecap="round" />
+
+  <!-- 4. Badge "MC" Below Book -->
+  <g transform="translate(256, 422)">
+    <!-- Hearts Flanking Badge -->
+    <path d="M -50,-4 C -50,-10 -43,-14 -37,-9 C -31,-14 -24,-10 -24,-4 C -24,4 -37,12 -37,12 C -37,12 -50,4 -50,-4 Z" fill="#f43f5e" />
+    <path d="M 50,-4 C 50,-10 43,-14 37,-9 C 31,-14 24,-10 24,-4 C 24,4 37,12 37,12 C 37,12 50,4 50,-4 Z" fill="#f43f5e" />
+
+    <!-- Badge Circle -->
+    <circle cx="0" cy="0" r="26" fill="#ffffff" class="outline" />
+    <!-- Text MC -->
+    <text x="0" y="7" class="text-mc">MC</text>
+  </g>
+</svg>
