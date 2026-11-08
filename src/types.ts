@@ -26,6 +26,8 @@ export interface Product {
   status: 'published' | 'draft';
   displayOrder?: number;
   createdAt: string;
+  isFree?: boolean;
+  freePdfUrl?: string;
 }
 
 

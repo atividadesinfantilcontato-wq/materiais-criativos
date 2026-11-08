@@ -6,11 +6,12 @@ const COLLECTION_NAME = 'products';
 
 // Convert Firestore doc snapshot data to Product object
 export function docToProduct(id: string, data: any): Product {
-  const mainImg = typeof data.imageUrl === 'string' && data.imageUrl.startsWith('https://') 
+  const mainImg = typeof data.imageUrl === 'string' && (data.imageUrl.startsWith('https://') || data.imageUrl.startsWith('http://') || data.imageUrl.startsWith('/')) 
     ? data.imageUrl 
-    : (typeof data.mainImage === 'string' && data.mainImage.startsWith('https://') ? data.mainImage : '');
+    : (typeof data.mainImage === 'string' && (data.mainImage.startsWith('https://') || data.mainImage.startsWith('http://') || data.mainImage.startsWith('/')) ? data.mainImage : '');
   
-  const priceNum = Number(data.price) || 19.90;
+  const isFree = Boolean(data.isFree || data.free || (data.price === 0 && Boolean(data.freePdfUrl || data.pdfDownloadUrl)));
+  const priceNum = isFree ? 0 : (data.price !== undefined && data.price !== null && !isNaN(Number(data.price)) ? Number(data.price) : 19.90);
 
   return {
     id,
@@ -23,13 +24,13 @@ export function docToProduct(id: string, data: any): Product {
     skillsWorked: String(data.skillsWorked || ''),
     imageUrl: mainImg,
     mainImage: mainImg,
-    thumbnailUrl: typeof data.thumbnailUrl === 'string' && data.thumbnailUrl.startsWith('https://') ? data.thumbnailUrl : mainImg,
+    thumbnailUrl: typeof data.thumbnailUrl === 'string' && (data.thumbnailUrl.startsWith('https://') || data.thumbnailUrl.startsWith('http://') || data.thumbnailUrl.startsWith('/')) ? data.thumbnailUrl : mainImg,
     galleryImages: Array.isArray(data.galleryImages) 
-      ? data.galleryImages.filter((img: any) => typeof img === 'string' && img.startsWith('https://')) 
+      ? data.galleryImages.filter((img: any) => typeof img === 'string' && (img.startsWith('https://') || img.startsWith('http://') || img.startsWith('/'))) 
       : [],
     youtubeUrl: String(data.youtubeUrl || ''),
     price: priceNum,
-    formattedPrice: `R$ ${priceNum.toFixed(2).replace('.', ',')}`,
+    formattedPrice: isFree ? 'Grátis' : `R$ ${priceNum.toFixed(2).replace('.', ',')}`,
     hotmartLink: String(data.hotmartUrl || data.hotmartLink || 'https://pay.hotmart.com/'),
     category: String(data.category || 'Geral'),
     targetAge: String(data.ageRange || data.targetAge || '2 a 6 anos'),
@@ -39,23 +40,28 @@ export function docToProduct(id: string, data: any): Product {
     socialFeatured: Boolean(data.socialFeatured ?? data.featured),
     status: data.status === 'draft' ? 'draft' : 'published',
     displayOrder: Number(data.displayOrder) || 1,
-    createdAt: String(data.createdAt || new Date().toISOString())
+    createdAt: String(data.createdAt || new Date().toISOString()),
+    isFree: isFree,
+    freePdfUrl: String(data.freePdfUrl || data.pdfDownloadUrl || '')
   };
 }
 
 // Convert Product object to Firestore document payload
 export function productToDoc(product: Product): Record<string, any> {
   const mainImg = (product.imageUrl || product.mainImage || '').trim();
-  const validMainImg = mainImg.startsWith('https://') ? mainImg : '';
+  const validMainImg = (mainImg.startsWith('https://') || mainImg.startsWith('http://') || mainImg.startsWith('/')) ? mainImg : '';
 
   const thumbImg = (product.thumbnailUrl || validMainImg).trim();
-  const validThumbImg = thumbImg.startsWith('https://') ? thumbImg : validMainImg;
+  const validThumbImg = (thumbImg.startsWith('https://') || thumbImg.startsWith('http://') || thumbImg.startsWith('/')) ? thumbImg : validMainImg;
 
   const gallery = Array.isArray(product.galleryImages)
     ? product.galleryImages
         .map(img => (typeof img === 'string' ? img.trim() : ''))
-        .filter(img => img.startsWith('https://'))
+        .filter(img => img.startsWith('https://') || img.startsWith('http://') || img.startsWith('/'))
     : [];
+
+  const isFree = Boolean(product.isFree);
+  const priceNum = isFree ? 0 : (Number(product.price) || 19.90);
 
   return {
     title: String(product.title || ''),
@@ -75,7 +81,7 @@ export function productToDoc(product: Product): Record<string, any> {
     thumbnailUrl: validThumbImg,
     galleryImages: gallery,
     youtubeUrl: String(product.youtubeUrl || ''),
-    price: Number(product.price) || 19.90,
+    price: priceNum,
     hotmartUrl: String(product.hotmartLink || ''),
     hotmartLink: String(product.hotmartLink || ''),
     status: product.status || 'published',
@@ -83,7 +89,9 @@ export function productToDoc(product: Product): Record<string, any> {
     socialFeatured: Boolean(product.socialFeatured),
     displayOrder: Number(product.displayOrder) || 1,
     createdAt: String(product.createdAt || new Date().toISOString()),
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    isFree: isFree,
+    freePdfUrl: String(product.freePdfUrl || '').trim()
   };
 }
 

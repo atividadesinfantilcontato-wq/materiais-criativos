@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
@@ -20,7 +21,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 const upload = multer({
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
   storage: multer.memoryStorage(),
 });
 
@@ -58,9 +59,28 @@ app.post('/api/upload-r2', upload.single('file'), async (req, res) => {
     const r2Client = getR2Client();
 
     if (!r2Client || !bucketName || !publicUrl) {
-      return res.status(400).json({
-        error: 'Variáveis de ambiente do Cloudflare R2 não estão configuradas. Verifique CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME e R2_PUBLIC_URL.',
-      });
+      // Local fallback storage in public/uploads/${folder}
+      try {
+        const uploadDir = path.join(process.cwd(), 'public', 'uploads', folder);
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        const cleanFilename = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const randomHash = Math.random().toString(36).substring(2, 9);
+        const fileName = `${Date.now()}-${randomHash}-${cleanFilename}`;
+        const filePath = path.join(uploadDir, fileName);
+        fs.writeFileSync(filePath, file.buffer);
+
+        const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
+        const protocol = (req.headers['x-forwarded-proto'] as string) || (req.secure ? 'https' : 'http');
+        const fileUrl = `${protocol}://${host}/uploads/${folder}/${fileName}`;
+
+        return res.json({ url: fileUrl, key: `uploads/${folder}/${fileName}`, fallback: true });
+      } catch (localErr: any) {
+        return res.status(500).json({
+          error: 'Falha ao salvar arquivo no servidor: ' + (localErr.message || 'Erro interno'),
+        });
+      }
     }
 
     const cleanFilename = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');

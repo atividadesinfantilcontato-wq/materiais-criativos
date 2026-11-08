@@ -18,7 +18,7 @@ import {
   ShieldCheck, Settings, Home, FileText, Upload, 
   AlertCircle, Key, Mail, RefreshCw, Eye,
   BarChart2, Share2, Copy, TrendingUp, Users, MousePointer, Smartphone, Globe, Link as LinkIcon, CheckCircle2, MapPin, Navigation, Building2,
-  ArrowUp, ArrowDown, ListOrdered, ExternalLink
+  ArrowUp, ArrowDown, ListOrdered, ExternalLink, Download
 } from 'lucide-react';
 import { fetchAnalyticsEventsAsync, purgeAllAnalyticsEventsAsync, AnalyticsEventRecord } from '../services/analyticsService';
 
@@ -210,6 +210,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
   const [isNew, setIsNew] = useState<boolean>(false);
   const [uploadingMain, setUploadingMain] = useState<boolean>(false);
   const [uploadingGallery, setUploadingGallery] = useState<boolean>(false);
+  const [uploadingPdf, setUploadingPdf] = useState<boolean>(false);
   const [notification, setNotification] = useState<string | null>(null);
 
   // Listen to Firebase Auth state & validate Firestore admins/{uid}
@@ -365,34 +366,40 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
     showToast('Sessão encerrada.');
   };
 
-  // Handle Start Creating New Product
-  const handleStartCreate = () => {
+  // Handle Start Creating New Product (Paid or Free Model)
+  const handleStartCreate = (templateType: 'paid' | 'free' = 'paid') => {
     const maxOrder = products && products.length > 0 
       ? Math.max(...products.map(p => Number(p.displayOrder) || 0)) 
       : 0;
 
+    const isFree = templateType === 'free';
+
     setEditingProduct({
       id: `prod-${Date.now()}`,
-      title: '',
+      title: isFree ? 'Atividade Gratuita: ' : '',
       slug: '',
-      shortSummary: '',
-      fullDescription: '',
+      shortSummary: isFree ? 'Baixe gratuitamente esta atividade em PDF para imprimir e aplicar com as crianças.' : '',
+      fullDescription: isFree 
+        ? 'Material pedagógico em PDF 100% gratuito preparado com carinho para imprimir e aplicar com as crianças em casa ou na sala de aula.\n\nContém atividades lúdicas e práticas prontas para impressão no formato A4.'
+        : '',
       skillsWorked: '',
       mainImage: '',
       thumbnailUrl: '',
       galleryImages: [],
       youtubeUrl: '',
-      price: 19.90,
-      formattedPrice: 'R$ 19,90',
+      price: isFree ? 0 : 19.90,
+      formattedPrice: isFree ? 'Grátis' : 'R$ 19,90',
       hotmartLink: '',
-      category: 'Educação Infantil',
+      category: isFree ? 'Atividades Gratuitas' : 'Educação Infantil',
       targetAge: '2 a 6 anos',
-      pdfCount: 10,
+      pdfCount: 5,
       pageSize: 'A4',
       featured: false,
       socialFeatured: false,
       status: 'published',
-      displayOrder: maxOrder + 1
+      displayOrder: maxOrder + 1,
+      isFree: isFree,
+      freePdfUrl: ''
     });
     setIsNew(true);
   };
@@ -478,6 +485,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
   const handleStartEdit = (p: Product) => {
     setEditingProduct({
       ...p,
+      isFree: Boolean(p.isFree),
+      freePdfUrl: p.freePdfUrl || '',
       galleryImages: Array.isArray(p.galleryImages) ? [...p.galleryImages] : []
     });
     setIsNew(false);
@@ -613,6 +622,32 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
     }
   };
 
+  // Upload PDF file to Cloudflare R2 / Server for Free Download
+  const handleUploadPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type && !file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
+      alert('Por favor, selecione um arquivo em formato PDF.');
+      return;
+    }
+
+    setUploadingPdf(true);
+    try {
+      const url = await uploadToR2(file, 'pdfs');
+      setEditingProduct(prev => prev ? { ...prev, freePdfUrl: url } : null);
+      showToast('Arquivo PDF enviado com sucesso!');
+    } catch (err: any) {
+      const msg = err.message || 'Falha no envio do PDF';
+      showToast('Erro ao fazer upload do PDF: ' + msg);
+    } finally {
+      setUploadingPdf(false);
+      if (e.target) {
+        e.target.value = '';
+      }
+    }
+  };
+
   // Save Product Form
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -624,7 +659,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
     const isValidHttpsUrl = (u?: string) => {
       if (!u || u.trim() === '') return true; // empty allowed
       const trimmed = u.trim();
-      return trimmed.startsWith('https://') && !trimmed.startsWith('data:') && !trimmed.startsWith('blob:') && !trimmed.startsWith('file:');
+      return (trimmed.startsWith('https://') || trimmed.startsWith('http://') || trimmed.startsWith('/')) && !trimmed.startsWith('data:') && !trimmed.startsWith('blob:') && !trimmed.startsWith('file:');
     };
 
     const mainImgToValidate = editingProduct.imageUrl || editingProduct.mainImage;
@@ -633,7 +668,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
       return;
     }
 
-    const priceNum = Number(editingProduct.price) || 19.90;
+    const isFree = Boolean(editingProduct.isFree);
+    const priceNum = isFree ? 0 : (Number(editingProduct.price) || 19.90);
+    const formattedPrice = isFree ? 'Grátis' : `R$ ${priceNum.toFixed(2).replace('.', ',')}`;
+
     const galleryArr = Array.isArray(editingProduct.galleryImages)
       ? editingProduct.galleryImages.filter(img => typeof img === 'string' && img.trim() !== '')
       : (typeof editingProduct.galleryImages === 'string' && (editingProduct.galleryImages as string).trim() !== ''
@@ -668,9 +706,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
       galleryImages: galleryArr,
       youtubeUrl: editingProduct.youtubeUrl || '',
       price: priceNum,
-      formattedPrice: `R$ ${priceNum.toFixed(2).replace('.', ',')}`,
+      formattedPrice: formattedPrice,
       hotmartLink: editingProduct.hotmartLink || '',
-      category: editingProduct.category || 'Geral',
+      category: editingProduct.category || (isFree ? 'Atividades Gratuitas' : 'Geral'),
       targetAge: editingProduct.targetAge || '2 a 6 anos',
       pdfCount: Number(editingProduct.pdfCount) || 10,
       pageSize: editingProduct.pageSize || 'A4',
@@ -678,7 +716,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
       socialFeatured: Boolean(editingProduct.socialFeatured),
       status: editingProduct.status || 'published',
       displayOrder: orderVal,
-      createdAt: editingProduct.createdAt || new Date().toISOString()
+      createdAt: editingProduct.createdAt || new Date().toISOString(),
+      isFree: isFree,
+      freePdfUrl: String(editingProduct.freePdfUrl || '').trim()
     };
 
     // Save to Firestore asynchronously
@@ -686,7 +726,7 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
       await saveProductAsync(fullProduct);
       await onProductsUpdated();
       setEditingProduct(null);
-      showToast(isNew ? 'Novo produto cadastrado no Firestore com sucesso!' : 'Produto atualizado no Firestore com sucesso!');
+      showToast(isNew ? (isFree ? 'Nova atividade gratuita cadastrada com sucesso!' : 'Novo produto cadastrado no Firestore com sucesso!') : 'Produto atualizado no Firestore com sucesso!');
     } catch (err: any) {
       alert('Erro ao salvar produto no Firestore: ' + (err.message || 'Falha no salvamento'));
     }
@@ -962,10 +1002,18 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                   </button>
 
                   <button
-                    onClick={handleStartCreate}
-                    className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm"
+                    onClick={() => handleStartCreate('free')}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    title="Criar novo material grátis com modelo pronto para download de PDF"
                   >
-                    <Plus className="w-4 h-4" /> Novo Material
+                    <Download className="w-4 h-4" /> Novo Material Grátis (Modelo)
+                  </button>
+
+                  <button
+                    onClick={() => handleStartCreate('paid')}
+                    className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" /> Novo Material Pago
                   </button>
                 </div>
               </div>
@@ -976,16 +1024,104 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
               <form onSubmit={handleSave} className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-md space-y-6">
                 
                 <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                  <h2 className="text-lg font-bold text-slate-900">
-                    {isNew ? 'Cadastrar Novo Material' : `Editar: ${editingProduct.title}`}
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-slate-900">
+                      {isNew 
+                        ? (editingProduct.isFree ? 'Cadastrar Novo Material Gratuito' : 'Cadastrar Novo Material') 
+                        : `Editar: ${editingProduct.title}`}
+                    </h2>
+                    {editingProduct.isFree && (
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        🎁 Atividade Grátis
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => setEditingProduct(null)}
-                    className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+                    className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold cursor-pointer"
                   >
                     Cancelar
                   </button>
+                </div>
+
+                {/* Seletor de Modelo de Material (Pago x Gratuito) */}
+                <div className="p-4.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                        Modelo do Material
+                      </span>
+                      <p className="text-[11px] text-slate-500">
+                        Escolha se este material será vendido com link da Hotmart ou se será disponibilizado para as pessoas baixarem de graça no site.
+                      </p>
+                    </div>
+                    {editingProduct.isFree ? (
+                      <span className="px-3 py-1 rounded-full bg-emerald-600 text-white font-bold text-xs flex items-center gap-1.5 self-start sm:self-auto shadow-xs">
+                        <Download className="w-3.5 h-3.5" /> Modo Download Grátis Ativo
+                      </span>
+                    ) : (
+                      <span className="px-3 py-1 rounded-full bg-slate-200 text-slate-700 font-bold text-xs self-start sm:self-auto">
+                        💰 Modo Pago (Hotmart)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingProduct({
+                          ...editingProduct,
+                          isFree: false,
+                          price: editingProduct.price && editingProduct.price > 0 ? editingProduct.price : 19.90,
+                          formattedPrice: `R$ ${(editingProduct.price && editingProduct.price > 0 ? editingProduct.price : 19.90).toFixed(2).replace('.', ',')}`
+                        });
+                      }}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                        !editingProduct.isFree 
+                          ? 'bg-white border-teal-600 ring-2 ring-teal-600/20 shadow-xs' 
+                          : 'bg-white/60 border-slate-200 hover:bg-white text-slate-600'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-xl shrink-0 ${!editingProduct.isFree ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-slate-100 text-slate-500'}`}>
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900 text-xs">Material Pago (Hotmart)</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">Venda tradicional direcionando para o checkout da Hotmart</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingProduct({
+                          ...editingProduct,
+                          isFree: true,
+                          price: 0,
+                          formattedPrice: 'Grátis',
+                          category: editingProduct.category && editingProduct.category !== 'Geral' ? editingProduct.category : 'Atividades Gratuitas'
+                        });
+                      }}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                        editingProduct.isFree 
+                          ? 'bg-emerald-50/80 border-emerald-600 ring-2 ring-emerald-600/20 shadow-xs' 
+                          : 'bg-white/60 border-slate-200 hover:bg-white text-slate-600'
+                      }`}
+                    >
+                      <div className={`p-2 rounded-xl shrink-0 ${editingProduct.isFree ? 'bg-emerald-600 text-white shadow-xs' : 'bg-slate-100 text-slate-500'}`}>
+                        <Download className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                          <span>Material Gratuito (Download Grátis)</span>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-600 text-white font-extrabold uppercase">PDF</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">A pessoa clica e baixa o PDF de graça, sem cobrança</div>
+                      </div>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
@@ -1088,24 +1224,35 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
 
                   {/* 11. Preço */}
                   <div>
-                    <label className="block font-bold text-slate-800 mb-1">11. Preço (R$)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editingProduct.price || 19.90}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) || 0 })}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold"
-                    />
+                    <label className="block font-bold text-slate-800 mb-1">
+                      11. Preço (R$) {editingProduct.isFree && <span className="text-emerald-700 font-bold">(Grátis)</span>}
+                    </label>
+                    {editingProduct.isFree ? (
+                      <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 font-bold text-xs flex items-center justify-between">
+                        <span>R$ 0,00</span>
+                        <span className="text-[10px] bg-emerald-600 text-white px-2 py-0.5 rounded-full font-bold">100% Gratuito</span>
+                      </div>
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editingProduct.price || 19.90}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, price: parseFloat(e.target.value) || 0 })}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold"
+                      />
+                    )}
                   </div>
 
                   {/* 12. Link Hotmart */}
                   <div>
-                    <label className="block font-bold text-slate-800 mb-1">12. Link de Checkout Hotmart</label>
+                    <label className="block font-bold text-slate-800 mb-1">
+                      12. Link de Checkout Hotmart {editingProduct.isFree && <span className="text-slate-400 font-normal">(Opcional)</span>}
+                    </label>
                     <input
                       type="url"
                       value={editingProduct.hotmartLink || ''}
                       onChange={(e) => setEditingProduct({ ...editingProduct, hotmartLink: e.target.value })}
-                      placeholder="https://pay.hotmart.com/..."
+                      placeholder={editingProduct.isFree ? "Opcional no modo gratuito" : "https://pay.hotmart.com/..."}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
                     />
                   </div>
@@ -1133,6 +1280,88 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900"
                     />
                   </div>
+
+                  {/* Se for material gratuito: Campo e Upload de PDF */}
+                  {editingProduct.isFree && (
+                    <div className="md:col-span-2 p-4 sm:p-5 rounded-2xl bg-emerald-50/80 border-2 border-emerald-300 space-y-4 shadow-xs">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="p-2 rounded-xl bg-emerald-600 text-white shadow-xs">
+                            <Download className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <label className="block font-extrabold text-slate-900 text-sm">
+                              Arquivo PDF para Download Grátis *
+                            </label>
+                            <p className="text-xs text-slate-600 mt-0.5">
+                              Suba o PDF da atividade ou informe o link direto para download gratuito.
+                            </p>
+                          </div>
+                        </div>
+
+                        {editingProduct.freePdfUrl && (
+                          <span className="px-3 py-1 rounded-full bg-emerald-200 text-emerald-900 font-bold text-[11px] flex items-center gap-1 self-start sm:self-auto">
+                            <Check className="w-3.5 h-3.5 text-emerald-700" /> PDF Anexado
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-3 items-center">
+                        <input
+                          type="url"
+                          value={editingProduct.freePdfUrl || ''}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, freePdfUrl: e.target.value })}
+                          placeholder="https://.../arquivo.pdf (ou clique no botão ao lado)"
+                          className="w-full p-2.5 bg-white border border-emerald-300 rounded-xl text-slate-900 text-xs font-mono focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden"
+                        />
+
+                        <label className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shrink-0 shadow-xs transition-colors">
+                          <Upload className="w-4 h-4" />
+                          <span>{uploadingPdf ? 'Enviando PDF...' : 'Subir Arquivo PDF'}</span>
+                          <input
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            onChange={handleUploadPdf}
+                            disabled={uploadingPdf}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+
+                      {editingProduct.freePdfUrl && editingProduct.freePdfUrl.trim() !== '' && (
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-emerald-200 text-xs">
+                          <div className="flex items-center gap-2 overflow-hidden max-w-md">
+                            <FileText className="w-4 h-4 text-emerald-700 shrink-0" />
+                            <span className="text-emerald-900 font-semibold truncate">{editingProduct.freePdfUrl}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={editingProduct.freePdfUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-3 py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> Testar Download
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => setEditingProduct({ ...editingProduct, freePdfUrl: '' })}
+                              className="px-3 py-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 font-bold transition-colors cursor-pointer"
+                            >
+                              Remover PDF
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="text-[11px] text-emerald-900 bg-white/80 p-3 rounded-xl border border-emerald-200/90 flex items-start gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <span>
+                          <strong>Experiência do usuário:</strong> Este material terá o selo <strong>"🎁 Grátis"</strong> na vitrine e o botão direto <strong>"Baixar Grátis"</strong>. Na página do produto, o visitante clica e o PDF é baixado diretamente no computador ou celular, sem precisar de checkout.
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   {/* 8. Imagem Principal & Cloudflare R2 Upload */}
                   <div className="md:col-span-2 p-4 rounded-2xl bg-teal-50/60 border border-teal-200 space-y-3">
@@ -1355,12 +1584,35 @@ export const AdminPage: React.FC<AdminPageProps> = ({ products, onProductsUpdate
                                 </div>
                               )}
                               <div>
-                                <div className="font-bold text-slate-900 text-sm">{p.title}</div>
-                                <div className="text-[11px] text-slate-400 font-mono">/{p.slug}</div>
+                                <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5 flex-wrap">
+                                  <span>{p.title}</span>
+                                  {p.isFree && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                      🎁 Grátis
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-[11px] text-slate-400 font-mono">/{p.slug}</span>
+                                  {p.isFree && (
+                                    p.freePdfUrl ? (
+                                      <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-0.5">
+                                        <Check className="w-3 h-3" /> PDF Pronto
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-amber-600 font-semibold flex items-center gap-0.5">
+                                        <AlertCircle className="w-3 h-3" /> Sem PDF
+                                      </span>
+                                    )
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </td>
-                          <td className="p-4 font-medium">{p.category}</td>
+                          <td className="p-4 font-medium">
+                            <div>{p.category}</div>
+                            {p.isFree && <div className="text-[10px] text-emerald-700 font-bold mt-0.5">Download Gratuito</div>}
+                          </td>
                           <td className="p-4">
                             <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                               p.status === 'draft' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-100 text-emerald-900'

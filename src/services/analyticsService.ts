@@ -15,7 +15,7 @@ export interface AnalyticsOrigin {
 }
 
 export interface AnalyticsEventPayload {
-  eventType: 'page_view' | 'product_view' | 'product_card_click' | 'material_card_click' | 'bio_button_click' | 'hotmart_click' | 'youtube_click';
+  eventType: 'page_view' | 'product_view' | 'product_card_click' | 'material_card_click' | 'bio_button_click' | 'hotmart_click' | 'youtube_click' | 'free_download_click';
   pagePath?: string;
   pageTitle?: string;
   productId?: string;
@@ -408,6 +408,17 @@ export function trackYoutubeClick(product?: { id?: string; slug?: string; title?
     productId: product?.id,
     productSlug: product?.slug,
     productTitle: product?.title,
+    pagePath: window.location.pathname
+  });
+}
+
+export function trackFreeDownloadClick(product?: { id?: string; slug?: string; title?: string }, downloadUrl?: string) {
+  trackEventAsync({
+    eventType: 'free_download_click',
+    productId: product?.id,
+    productSlug: product?.slug,
+    productTitle: product?.title,
+    buttonLabel: 'Download Grátis',
     pagePath: window.location.pathname
   });
 }

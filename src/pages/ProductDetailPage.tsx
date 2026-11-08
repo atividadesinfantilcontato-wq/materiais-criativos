@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product } from '../types';
 import { extractYoutubeEmbedId, generateSlug } from '../utils/slug';
-import { trackProductView, trackHotmartClick, trackYoutubeClick } from '../services/analyticsService';
+import { trackProductView, trackHotmartClick, trackYoutubeClick, trackFreeDownloadClick } from '../services/analyticsService';
 import { SEO } from '../components/SEO';
 import { generateProductSchema } from '../utils/seo';
 import { 
@@ -18,7 +18,8 @@ import {
   Video, 
   Image as ImageIcon, 
   BookOpen,
-  AlertCircle
+  AlertCircle,
+  Download
 } from 'lucide-react';
 
 interface ProductDetailPageProps {
@@ -47,7 +48,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
     product.mainImage,
     product.thumbnailUrl,
     ...(product.galleryImages || [])
-  ].filter((url, idx, arr): url is string => Boolean(url && url.startsWith('https://')) && arr.indexOf(url) === idx);
+  ].filter((url, idx, arr): url is string => Boolean(url && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('/'))) && arr.indexOf(url) === idx);
 
   const [selectedImage, setSelectedImage] = useState<string>(candidateImages[0] || '');
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
@@ -198,10 +199,17 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
             <div className="lg:col-span-6 space-y-6">
               
               <div className="flex flex-wrap items-center gap-2">
-                <span className="px-3 py-1 rounded-full bg-softgreen-bg text-[#2F8F6B] text-xs font-bold border border-softgreen-border flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-[#2F8F6B]" />
-                  Material digital em PDF
-                </span>
+                {product.isFree ? (
+                  <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200 flex items-center gap-1.5">
+                    <Download className="w-3.5 h-3.5 text-emerald-600" />
+                    Download 100% Gratuito em PDF
+                  </span>
+                ) : (
+                  <span className="px-3 py-1 rounded-full bg-softgreen-bg text-[#2F8F6B] text-xs font-bold border border-softgreen-border flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-[#2F8F6B]" />
+                    Material digital em PDF
+                  </span>
+                )}
                 {product.targetAge && (
                   <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
                     Indicação: {product.targetAge}
@@ -223,18 +231,54 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
                   <span>Pronto para baixar e imprimir em formato A4</span>
                 </div>
                 <p className="text-slate-500">
-                  Nenhum produto físico será enviado pelos correios. Acesso instantâneo via Hotmart.
+                  {product.isFree 
+                    ? 'Material gratuito! Baixe o arquivo PDF e imprima direto no seu celular ou computador.'
+                    : 'Nenhum produto físico será enviado pelos correios. Acesso instantâneo via Hotmart.'}
                 </p>
               </div>
 
-              {/* Scroll Button to Details (NO Hotmart buy button here) */}
-              <button
-                onClick={scrollToDetails}
-                className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-[#6BCB9A] hover:bg-[#55B987] text-white font-bold text-sm transition-all shadow-md shadow-[#6BCB9A]/20 flex items-center justify-center gap-2"
-              >
-                <span>Ver detalhes do material</span>
-                <ArrowDown className="w-4 h-4" />
-              </button>
+              {/* Action Buttons */}
+              {product.isFree ? (
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  {product.freePdfUrl ? (
+                    <a
+                      href={product.freePdfUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      onClick={() => trackFreeDownloadClick(product, product.freePdfUrl)}
+                      className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-sm transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Baixar PDF Grátis Agora</span>
+                    </a>
+                  ) : (
+                    <button
+                      onClick={scrollToDetails}
+                      className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>Baixar Material Grátis</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={scrollToDetails}
+                    className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <span>Ver detalhes</span>
+                    <ArrowDown className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={scrollToDetails}
+                  className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-[#6BCB9A] hover:bg-[#55B987] text-white font-bold text-sm transition-all shadow-md shadow-[#6BCB9A]/20 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>Ver detalhes do material</span>
+                  <ArrowDown className="w-4 h-4" />
+                </button>
+              )}
 
             </div>
 
@@ -352,7 +396,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-start gap-3">
               <CheckCircle2 className="w-5 h-5 text-[#2F8F6B] shrink-0 mt-0.5" />
               <div>
-                <strong className="text-slate-900 block">Produto Digital</strong>
+                <strong className="text-slate-900 block">{product.isFree ? 'Material Gratuito' : 'Produto Digital'}</strong>
                 Arquivo em formato PDF
               </div>
             </div>
@@ -376,16 +420,20 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-start gap-3">
               <ShieldCheck className="w-5 h-5 text-[#2F8F6B] shrink-0 mt-0.5" />
               <div>
-                <strong className="text-slate-900 block">Entrega imediata</strong>
-                Acesso por e-mail pela Hotmart
+                <strong className="text-slate-900 block">{product.isFree ? 'Download Direto' : 'Entrega imediata'}</strong>
+                {product.isFree ? 'Baixe no celular ou computador' : 'Acesso por e-mail pela Hotmart'}
               </div>
             </div>
 
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-start gap-3">
-              <ExternalLink className="w-5 h-5 text-[#2F8F6B] shrink-0 mt-0.5" />
+              {product.isFree ? (
+                <Download className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <ExternalLink className="w-5 h-5 text-[#2F8F6B] shrink-0 mt-0.5" />
+              )}
               <div>
-                <strong className="text-slate-900 block">Compra pela Hotmart</strong>
-                Plataforma 100% protegida
+                <strong className="text-slate-900 block">{product.isFree ? '100% Grátis' : 'Compra pela Hotmart'}</strong>
+                {product.isFree ? 'Sem taxa ou cadastro prévio' : 'Plataforma 100% protegida'}
               </div>
             </div>
 
@@ -405,10 +453,14 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
         <section className="bg-softgreen-bg border border-softgreen-border rounded-3xl p-6 sm:p-8 space-y-3">
           <div className="flex items-center gap-3">
             <ShieldCheck className="w-6 h-6 text-[#2F8F6B] shrink-0" />
-            <h3 className="font-bold text-slate-900 text-lg">Como funciona a entrega</h3>
+            <h3 className="font-bold text-slate-900 text-lg">
+              {product.isFree ? 'Como baixar este material gratuito' : 'Como funciona a entrega'}
+            </h3>
           </div>
           <p className="text-sm text-slate-700 leading-relaxed font-medium">
-            Após a compra, o acesso ao material digital é enviado pela Hotmart para o seu e-mail cadastrado. Nenhum produto físico será enviado pelos correios. Você pode imprimir as folhas em casa ou em uma gráfica quantas vezes desejar.
+            {product.isFree 
+              ? 'Este material é 100% gratuito. Você pode baixar o arquivo PDF agora mesmo clicando no botão de download e imprimir em casa ou na gráfica quantas cópias precisar.'
+              : 'Após a compra, o acesso ao material digital é enviado pela Hotmart para o seu e-mail cadastrado. Nenhum produto físico será enviado pelos correios. Você pode imprimir as folhas em casa ou em uma gráfica quantas vezes desejar.'}
           </p>
         </section>
 
@@ -444,52 +496,107 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({ product, o
         </section>
 
 
-        {/* 9. BLOCO FINAL DE COMPRA (HOTMART BUTTON HERE ONLY) */}
-        <section className="bg-slate-900 text-white rounded-3xl p-8 sm:p-12 shadow-2xl text-center space-y-6 border border-slate-800">
-          <div className="max-w-xl mx-auto space-y-3">
-            <span className="px-3 py-1 rounded-full bg-softgreen-bg text-[#6BCB9A] text-xs font-bold border border-softgreen-border">
-              Pronto para utilizar
-            </span>
+        {/* 9. BLOCO FINAL DE AÇÃO / COMPRA / DOWNLOAD */}
+        {product.isFree ? (
+          <section id="download-gratis" className="bg-slate-900 text-white rounded-3xl p-8 sm:p-12 shadow-2xl text-center space-y-6 border border-slate-800">
+            <div className="max-w-xl mx-auto space-y-3">
+              <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold border border-emerald-500/30">
+                🎁 Atividade Gratuita
+              </span>
 
-            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              Adquira o material digital
-            </h2>
+              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                Baixe o material em PDF gratuitamente
+              </h2>
 
-            <p className="text-slate-300 text-sm leading-relaxed">
-              Tenha acesso imediato ao arquivo PDF de "{product.title}" e comece a aplicar com as crianças hoje mesmo.
-            </p>
+              <p className="text-slate-300 text-sm leading-relaxed">
+                Tenha acesso imediato ao arquivo PDF de "{product.title}" e comece a aplicar com as crianças hoje mesmo.
+              </p>
 
-            <div className="pt-2">
-              <div className="text-xs text-slate-400 uppercase tracking-wider">Valor do arquivo digital:</div>
-              <div className="text-3xl sm:text-4xl font-extrabold text-[#6BCB9A] mt-1">
-                {product.formattedPrice || `R$ ${product.price.toFixed(2).replace('.', ',')}`}
+              <div className="pt-2">
+                <div className="text-xs text-slate-400 uppercase tracking-wider">Valor do arquivo digital:</div>
+                <div className="text-3xl sm:text-4xl font-extrabold text-emerald-400 mt-1">
+                  100% GRÁTIS
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Hotmart Purchase Button */}
-          <div className="pt-2 max-w-md mx-auto space-y-3">
-            <a
-              href={product.hotmartLink || 'https://pay.hotmart.com'}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => trackHotmartClick(product, product.hotmartLink || 'https://pay.hotmart.com')}
-              className="w-full py-4 px-8 rounded-2xl bg-[#6BCB9A] hover:bg-[#55B987] active:bg-[#46a375] text-slate-950 font-extrabold text-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg shadow-[#6BCB9A]/20 hover:scale-[1.02]"
-            >
-              <span>Comprar pela Hotmart</span>
-              <ExternalLink className="w-5 h-5" />
-            </a>
+            {/* Free Download Button */}
+            <div className="pt-2 max-w-md mx-auto space-y-3">
+              {product.freePdfUrl ? (
+                <a
+                  href={product.freePdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download
+                  onClick={() => trackFreeDownloadClick(product, product.freePdfUrl)}
+                  className="w-full py-4 px-8 rounded-2xl bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-slate-950 font-extrabold text-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg shadow-emerald-500/20 hover:scale-[1.02] cursor-pointer"
+                >
+                  <Download className="w-6 h-6" />
+                  <span>Baixar PDF Grátis Agora</span>
+                </a>
+              ) : (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm font-medium">
+                  Arquivo PDF sendo disponibilizado pela equipe.
+                </div>
+              )}
 
-            <div className="flex items-center justify-center gap-2 text-xs text-slate-400 font-medium">
-              <ShieldCheck className="w-4 h-4 text-[#6BCB9A]" />
-              <span>Pagamento e entrega processados pela Hotmart</span>
+              <div className="flex items-center justify-center gap-2 text-xs text-slate-400 font-medium">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <span>Download direto sem necessidade de cadastro ou pagamento</span>
+              </div>
             </div>
-          </div>
 
-          <p className="text-xs text-slate-500 pt-2 max-w-md mx-auto">
-            Atividades Criativas Oficial • Arquivo digital em PDF para imprimir. Requer supervisão de adulto durante o manuseio de materiais por crianças.
-          </p>
-        </section>
+            <p className="text-xs text-slate-500 pt-2 max-w-md mx-auto">
+              Atividades Criativas Oficial • Arquivo digital em PDF para imprimir. Requer supervisão de adulto durante o manuseio de materiais por crianças.
+            </p>
+          </section>
+        ) : (
+          <section className="bg-slate-900 text-white rounded-3xl p-8 sm:p-12 shadow-2xl text-center space-y-6 border border-slate-800">
+            <div className="max-w-xl mx-auto space-y-3">
+              <span className="px-3 py-1 rounded-full bg-softgreen-bg text-[#6BCB9A] text-xs font-bold border border-softgreen-border">
+                Pronto para utilizar
+              </span>
+
+              <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                Adquira o material digital
+              </h2>
+
+              <p className="text-slate-300 text-sm leading-relaxed">
+                Tenha acesso imediato ao arquivo PDF de "{product.title}" e comece a aplicar com as crianças hoje mesmo.
+              </p>
+
+              <div className="pt-2">
+                <div className="text-xs text-slate-400 uppercase tracking-wider">Valor do arquivo digital:</div>
+                <div className="text-3xl sm:text-4xl font-extrabold text-[#6BCB9A] mt-1">
+                  {product.formattedPrice || `R$ ${product.price.toFixed(2).replace('.', ',')}`}
+                </div>
+              </div>
+            </div>
+
+            {/* Hotmart Purchase Button */}
+            <div className="pt-2 max-w-md mx-auto space-y-3">
+              <a
+                href={product.hotmartLink || 'https://pay.hotmart.com'}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackHotmartClick(product, product.hotmartLink || 'https://pay.hotmart.com')}
+                className="w-full py-4 px-8 rounded-2xl bg-[#6BCB9A] hover:bg-[#55B987] active:bg-[#46a375] text-slate-950 font-extrabold text-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg shadow-[#6BCB9A]/20 hover:scale-[1.02]"
+              >
+                <span>Comprar pela Hotmart</span>
+                <ExternalLink className="w-5 h-5" />
+              </a>
+
+              <div className="flex items-center justify-center gap-2 text-xs text-slate-400 font-medium">
+                <ShieldCheck className="w-4 h-4 text-[#6BCB9A]" />
+                <span>Pagamento e entrega processados pela Hotmart</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-500 pt-2 max-w-md mx-auto">
+              Atividades Criativas Oficial • Arquivo digital em PDF para imprimir. Requer supervisão de adulto durante o manuseio de materiais por crianças.
+            </p>
+          </section>
+        )}
 
       </div>
 

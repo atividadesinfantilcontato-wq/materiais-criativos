@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Product } from '../types';
-import { FileCheck, Printer, ArrowRight, Sparkles } from 'lucide-react';
+import { FileCheck, Printer, ArrowRight, Sparkles, Download } from 'lucide-react';
 import { generateSlug } from '../utils/slug';
 import { trackMaterialCardClick } from '../services/analyticsService';
 
@@ -44,7 +44,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelectProdu
     product.mainImage,
     product.thumbnailUrl,
     ...(product.galleryImages || [])
-  ].filter((url, idx, arr): url is string => Boolean(url && url.startsWith('https://')) && arr.indexOf(url) === idx);
+  ].filter((url, idx, arr): url is string => Boolean(url && (url.startsWith('https://') || url.startsWith('http://') || url.startsWith('/'))) && arr.indexOf(url) === idx);
 
   if (
     product._source !== 'firestore' ||
@@ -127,6 +127,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelectProdu
         
         {/* Category & Age Badges */}
         <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 max-w-[85%] z-10">
+          {product.isFree && (
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-600 text-white shadow-md flex items-center gap-1">
+              <span>🎁 Grátis</span>
+            </span>
+          )}
           <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/95 text-slate-800 shadow-xs backdrop-blur-xs">
             {product.category}
           </span>
@@ -167,16 +172,27 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product, onSelectProdu
           </span>
         </div>
 
-        {/* Action Button - "Saiba mais" Only */}
+        {/* Action Button */}
         <div className="pt-1">
-          <button
-            type="button"
-            onClick={(e) => handleClick(e)}
-            className="w-full py-2.5 px-4 rounded-xl bg-[#6BCB9A] hover:bg-[#55B987] active:bg-[#46a375] text-white font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-xs group-hover:shadow-md cursor-pointer"
-          >
-            <span>Saiba mais</span>
-            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-          </button>
+          {product.isFree ? (
+            <button
+              type="button"
+              onClick={(e) => handleClick(e)}
+              className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-xs group-hover:shadow-md cursor-pointer"
+            >
+              <Download className="w-4 h-4" />
+              <span>Baixar Grátis</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => handleClick(e)}
+              className="w-full py-2.5 px-4 rounded-xl bg-[#6BCB9A] hover:bg-[#55B987] active:bg-[#46a375] text-white font-semibold text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-xs group-hover:shadow-md cursor-pointer"
+            >
+              <span>Saiba mais</span>
+              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </button>
+          )}
         </div>
       </div>
     </div>
